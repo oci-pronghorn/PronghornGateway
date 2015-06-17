@@ -6,6 +6,23 @@
   <description></description>
   <artifactId>PronghornGateway</artifactId>
   
+  <!-- 
+  	Deliverable goals:
+  	   Full Jar must be smaller than 512K, desired size of 128K
+  	   Runtime for small use cases must work with less than 16MB, desired runtime of 4MB
+   -->
+   <properties>
+    <java.bootstrap.classes>
+      ${java.home}/lib/rt.jar
+    </java.bootstrap.classes>
+    <java.cryptographic.extension.classes>
+      ${java.home}/lib/jce.jar
+    </java.cryptographic.extension.classes>
+    <java.secure.socket.extension.classes>
+      ${java.home}/lib/jsse.jar
+    </java.secure.socket.extension.classes>
+  </properties>
+  
     <dependencies>
     		
       	<dependency>
@@ -90,6 +107,7 @@
         </executions>
       </plugin>
       
+         
           <plugin>
           <artifactId>maven-assembly-plugin</artifactId>
           <configuration>
@@ -107,7 +125,7 @@
           <executions>
           <execution>
             <id>make-assembly</id> <!-- this is used for inheritance merges -->
-            <phase>package</phase> <!-- bind to the packaging phase -->
+            <phase>prepare-package</phase> <!-- bind to the packaging phase -->
             <goals>
               <goal>single</goal>
             </goals>
@@ -115,7 +133,48 @@
         </executions>
         </plugin>
         
+
+	
+	       <plugin>
+        <!--groupId>com.pyx4me</groupId-->
+        <groupId>com.github.wvengen</groupId>
+        <artifactId>proguard-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>proguard</id>
+            <phase>package</phase>
+            <goals>
+              <goal>proguard</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <options>
+            <option>-keep public class com.ociweb.gateway.broker.PronghornGateway</option>
+          </options>
+          <libs>
+            <lib>${java.bootstrap.classes}</lib>
+            <lib>${java.cryptographic.extension.classes}</lib>
+            <lib>${java.secure.socket.extension.classes}</lib>
+          </libs>
+          <injar>pg.jar</injar>
+          <outjar>pg-small.jar</outjar>
+        </configuration>
+        <dependencies>
+          <dependency>
+            <groupId>net.sf.proguard</groupId>
+            <artifactId>proguard-base</artifactId>
+            <version>4.10</version>
+            <scope>runtime</scope>
+          </dependency>
+        </dependencies>
+      </plugin>
+        
         
 	  </plugins>
 	</build>	  
+	
+    
+
+	
 </project>
