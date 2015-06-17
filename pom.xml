@@ -1,0 +1,121 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.ociweb.gateway</groupId>
+  <version>0.0.1-SNAPSHOT</version>
+  <name>PronghornGateway</name>
+  <description></description>
+  <artifactId>PronghornGateway</artifactId>
+  
+    <dependencies>
+    		
+      	<dependency>
+	      <groupId>junit</groupId>
+	      <artifactId>junit</artifactId>
+	      <version>4.12</version>
+	  	  <type>jar</type>
+	  	  <scope>test</scope>
+		  <optional>false</optional>
+		</dependency>
+		<dependency>
+	  		<groupId>com.ociweb</groupId>
+	  		<artifactId>Pronghorn</artifactId>
+	  		<version>0.0.1-SNAPSHOT</version>
+    	</dependency>
+		<dependency>
+			<groupId>org.slf4j</groupId>
+			<artifactId>slf4j-api</artifactId>
+			<version>1.7.12</version>
+		</dependency>	
+        <dependency>
+          <groupId>org.slf4j</groupId>
+          <artifactId>slf4j-simple</artifactId>
+          <version>1.7.12</version>
+          <scope>runtime</scope>
+        </dependency>   
+	</dependencies>
+	
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>false</enabled>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </snapshots>
+      <id>repository-pronghorn.forge.cloudbees.com</id>
+      <name>Active Repo for Pronghorn</name>
+      <!-- Looking for the release jar? This project is under active development.
+           Please consider getting involved and sponsoring the completion of Pronghorn.
+           mailto:info@ociweb.com;?subject=Pronghorn%20Sponsor%20Inquiry
+       -->
+      <url>http://repository-pronghorn.forge.cloudbees.com/snapshot/</url>
+      <layout>default</layout>
+    </repository>
+  </repositories>
+	
+	<build>
+    
+         <plugins>
+	    <plugin>
+              <artifactId>maven-compiler-plugin</artifactId>
+              <version>3.0</version>
+	      <configuration>
+		        <source>1.7</source>  
+         		<target>1.7</target>
+	      </configuration>
+	    </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <configuration>
+            <source>1.7</source>
+            <target>1.7</target>
+          </configuration>
+        </plugin>
+        
+        <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>2.4</version>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      
+          <plugin>
+          <artifactId>maven-assembly-plugin</artifactId>
+          <configuration>
+            <archive>
+              <manifest>
+                <mainClass>com.ociweb.gateway.broker.PronghornGateway</mainClass>
+              </manifest>
+            </archive>
+            <descriptorRefs>
+              <descriptorRef>jar-with-dependencies</descriptorRef>
+            </descriptorRefs>
+            <finalName>pg</finalName>  
+            <appendAssemblyId>false</appendAssemblyId>        
+          </configuration>
+          <executions>
+          <execution>
+            <id>make-assembly</id> <!-- this is used for inheritance merges -->
+            <phase>package</phase> <!-- bind to the packaging phase -->
+            <goals>
+              <goal>single</goal>
+            </goals>
+          </execution>
+        </executions>
+        </plugin>
+        
+        
+	  </plugins>
+	</build>	  
+</project>
