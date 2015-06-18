@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+
+   <template name="PubAck" id="6" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+    <uInt32 name="PacketId" id="200"/>
+   </template>
+  
+   <template name="PubRec" id="7" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+    <uInt32 name="PacketId" id="200"/>
+   </template>
+   
+<!-- for subs -->
+
+   <template name="Message" id="9" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+    <uInt32 name="QOS" id="100"/>
+    <uInt32 name="PacketId" id="200"/>
+    <string name="Topic" id="400"/>
+    <string name="Payload" id="500" encoding="utf8"/>
+   </template>
+
+</templates>

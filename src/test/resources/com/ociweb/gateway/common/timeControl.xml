@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+
+   <template name="Start" id="1" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+   </template>
+   
+   <template name="Stop" id="2" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+   </template>
+   
+   <template name="Reset" id="3" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+   </template>
+
+</templates>

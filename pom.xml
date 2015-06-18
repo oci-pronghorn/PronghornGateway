@@ -49,9 +49,11 @@
           <version>1.7.12</version>
           <scope>runtime</scope>
         </dependency>   
+
 	</dependencies>
 	
   <repositories>
+
     <repository>
       <releases>
         <enabled>false</enabled>
@@ -69,7 +71,8 @@
        -->
       <url>http://repository-pronghorn.forge.cloudbees.com/snapshot/</url>
       <layout>default</layout>
-    </repository>
+    </repository>  
+  
   </repositories>
 	
 	<build>
@@ -150,7 +153,9 @@
         </executions>
         <configuration>
           <options>
-            <option>-keep public class com.ociweb.gateway.broker.PronghornGateway</option>
+            <option>-keep public class com.ociweb.gateway.**</option>
+            <option>-dontobfuscate</option>
+            <option>-dontpreverify</option>
           </options>
           <libs>
             <lib>${java.bootstrap.classes}</lib>
