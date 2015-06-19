@@ -154,7 +154,7 @@
         <configuration>
           <options>
             <option>-keep public class com.ociweb.gateway.**</option>
-            <option>-dontobfuscate</option>
+            <!--  option>-dontobfuscate</option -->
             <option>-dontpreverify</option>
           </options>
           <libs>
