@@ -60,7 +60,7 @@ public class ClientAPIFactory {
 		new ConnectionStage(gm, connectionIn, timeTrigger, connectionOut, timeControl, releasedIds);
 		
 		//TODO: B, replace with JMX version before release.
-	    MonitorConsoleStage.attach(gm);
+	    MonitorConsoleStage.attach(gm); //TODO: also must remove xml template and use static from instead.
 		return apiStage;
 	}
 
