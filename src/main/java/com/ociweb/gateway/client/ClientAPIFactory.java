@@ -1,5 +1,7 @@
 package com.ociweb.gateway.client;
 
+import java.util.concurrent.TimeUnit;
+
 import com.ociweb.gateway.common.CommonFromFactory;
 import com.ociweb.gateway.common.IdGenStage;
 import com.ociweb.gateway.common.TimeKeeperStage;
@@ -17,7 +19,7 @@ public class ClientAPIFactory {
 	}
 	
 	public static APIStage clientAPI(GraphManager gm) {
-		int queuedIds = 5;
+		int queuedIds = 3;
 		int queuedTimeControl = 2;
 		int queuedTimeTrigger = 2;
 		int queuedConIn = 5;
@@ -29,9 +31,10 @@ public class ClientAPIFactory {
 				            queuedConOut, maxTopicOrPayload);
 		
 		//TODO: B, must add way to pass in different schedulers and shut them down.
-		StageScheduler scheduler = new ThreadPerStageScheduler(gm);
-		scheduler.startup();
-		scheduler.shutdown();
+//		StageScheduler scheduler = new ThreadPerStageScheduler(gm);
+//		scheduler.startup();
+//		scheduler.shutdown();
+//		scheduler.awaitTermination(10, TimeUnit.MILLISECONDS);
 		return result;
 	}
 

@@ -1,8 +1,6 @@
 package com.ociweb.gateway.common;
 
-import static com.ociweb.pronghorn.ring.RingBuffer.addMsgIdx;
-import static com.ociweb.pronghorn.ring.RingBuffer.publishWrites;
-import static com.ociweb.pronghorn.ring.RingBuffer.roomToLowLevelWrite;
+import static com.ociweb.pronghorn.ring.RingBuffer.*;
 
 import java.util.Arrays;
 
@@ -22,26 +20,35 @@ import com.ociweb.pronghorn.stage.scheduling.GraphManager;
  */
 public class IdGenStage extends PronghornStage {
 
-	public final int MAX_BLOCK_SIZE = 1024;
-	private final int MAX_CONSUMED_BLOCKS = 128;
-	private final int STOP_CODE = 0xFFFFFFFF;
+	public static final int MAX_BLOCK_SIZE = 256;//128;//1024;
+	
+	private static final int MAX_CONSUMED_BLOCKS = 1+((1<<16)/MAX_BLOCK_SIZE);
+	private static final int STOP_CODE = 0xFFFFFFFF;
 	
 	private int[] consumedRanges;
 	private int totalRanges = 0;
 	
 	private final RingBuffer[] inputs;
 	private final RingBuffer[] outputs;	
+	private final int sizeOfFragment;
+	private static final int theOneMsg = 0;// there is only 1 message supported by this stage
 		
 	public IdGenStage(GraphManager graphManager, RingBuffer input, RingBuffer output) {
 		super(graphManager, input, output);
 		this.inputs = new RingBuffer[]{input};
 		this.outputs = new RingBuffer[]{output};
+		assert(RingBuffer.from(input).equals(RingBuffer.from(output))) : "Both must have same message types ";	
+		this.sizeOfFragment = RingBuffer.from(input).fragDataSize[theOneMsg];
+		
+		
 	}
 	
 	public IdGenStage(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs) {
 		super(graphManager, inputs, outputs);
 		this.inputs = inputs;
 		this.outputs = outputs;
+		//TODO: add assert to confirm that all the inputs and outputs have the same eq from.
+		this.sizeOfFragment = RingBuffer.from(inputs[0]).fragDataSize[theOneMsg];
 	}
 
 	@Override
@@ -51,68 +58,55 @@ public class IdGenStage extends PronghornStage {
 
 	@Override
 	public void run() {
-		//try to keep output rings full
-		//there is only one message type so the low level API is ideal here
 		
-		//pull in all the relapsed blocks
+		//pull in all the released ranges first so we have them to give back out again.
 		int i = inputs.length;
 		while (--i>=0) {
 			RingBuffer inputRing = inputs[i];
-			int sizeOfFragment = 123;//????
-			while (RingBuffer.contentToLowLevelRead(inputRing, sizeOfFragment)) {
-//				int msgIdx = RingBuffer.takeMsgIdx(inputRing);
-//				
-//				
-//				RingBuffer.readBytesAndreleaseReadLock(inputRing);
-//				
-//				//low level API can write multiple message and messages with multiple fragments but it 
-//				//becomes more difficult. (That is what the high level API is more commonly used for)
-//				//In this example we are writing 1 message that is made up of 1 fragment
-//				RingBuffer.confirmLowLevelRead(inputRing, FROM.fragDataSize[msgIdx]);
+			while (contentToLowLevelRead(inputRing, sizeOfFragment)) {
+				int msgIdx = RingBuffer.takeMsgIdx(inputRing);
+				assert(theOneMsg == msgIdx);
+				
+				releaseRange(RingBuffer.takeValue(inputRing));
+				
+				RingBuffer.readBytesAndreleaseReadLock(inputRing);
+				RingBuffer.confirmLowLevelRead(inputRing, sizeOfFragment);
 			}
-			
-			
 		}
 		
-		//populate all the output Rings if possible
-		int j = inputs.length;
+		//push out all the new ranges for use as long as we have values and the queues have room
+		int j = outputs.length;
 		while (--j>=0) {
 			RingBuffer outputRing = outputs[j];
-			int sizeOfFragment = 123;//????
 			while (roomToLowLevelWrite(outputRing, sizeOfFragment) ) {
-			    
-				//addMsgIdx(outputRing, fragToWrite);		
-				//publishWrites(outputRing);
+			    				
+				int range = reserveNewRange();
+				if (STOP_CODE == range) {
+					return;//no more values to give out
+				}
 				
-			}			
-			
-			
+				addMsgIdx(outputRing, theOneMsg);	
+				RingBuffer.addIntValue(range, outputRing);
+				publishWrites(outputRing);	
+				RingBuffer.confirmLowLevelWrite(outputRing, sizeOfFragment);
+			}
 		}
-		
-		
-		//Read all the releases and put them back first
-		//Reserve new messages until 
-		//          1. all output queues are full or
-		//          2. no more space to allocate
-		
-		
-		//TODO: needs non blocking code
-		
 	}
 	
 	public void releaseRange(int range) {
 		
-		int idx = Arrays.binarySearch(consumedRanges, range);		
+		int idx = Arrays.binarySearch(consumedRanges, 0, totalRanges, range);		
 		if (idx<0) {
 			int insertAt = -(idx+1);
 			if (insertAt==totalRanges) {
+				//System.err.println("found error");
 				//skip because there is nothing to delete
+				//TODO: log as warning of odd behavior but do not stop processing in any way.
 			} else {
 			
 				//this number comes before that value at this position
 				//must erase up to end however for bad messages end may be before start.
 				//if end is greater than end must continue and delete block
-				
 				int releaseEnd = 0xFFFF&(range>>16);
 				int rowBegin =0;
 				int rows = 0;
@@ -130,8 +124,8 @@ public class IdGenStage extends PronghornStage {
 				}
 				//all remaining rows are deleted
 				if (rows>0) {
-					int toCopy = -rows + totalRanges - idx;
-					System.arraycopy(consumedRanges, idx+rows, consumedRanges, idx, toCopy);			
+					int toCopy = -rows + totalRanges - insertAt;					
+					System.arraycopy(consumedRanges, insertAt+rows, consumedRanges, insertAt, toCopy);			
 					totalRanges-=rows;
 				}
 			}
