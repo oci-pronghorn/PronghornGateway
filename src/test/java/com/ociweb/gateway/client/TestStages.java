@@ -10,7 +10,10 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
+import org.junit.Ignore;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.ociweb.gateway.common.GGSGenerator;
 import com.ociweb.gateway.common.GVSValidator;
@@ -27,8 +30,39 @@ import com.ociweb.pronghorn.stage.scheduling.ThreadPerStageScheduler;
 
 public class TestStages {
 	
+	private static final Logger log = LoggerFactory.getLogger(TestStages.class);
 	
-	@Test
+	
+	/*
+	 * Testing notes:
+	 * 
+	 * All the tests for this project have been dynamically generated so more can be tested the longer they run.
+	 * There are 3 major tests types in use.
+	 * 
+	 * 1. Fuzz test
+	 *    Generator builds random messages with random content.
+	 *    Ensure all outgoing messages are valid as defined by schema.
+	 *    No Business checks
+	 *    More invalid business messages are sent than valid
+	 *    Ensure no messages cause crash or hang
+	 *    Crash is defined as an unexpected exception.
+	 *    Hang is defined as a blocking call to run that does not return
+	 *    
+	 *2. Expected use test
+	 *   Generator builds random valid business messages
+	 *   Ensure un-expected business messages do not stop processing with chrash or hang.
+	 *   More valid bussiness message are sent than invalid
+	 *   Ensure output messages follow business expectations
+	 * 
+	 *3. Identical behavior test
+	 *   When refactoring its helpful to have a baseline implementation to ensure no behavior has changed.
+	 *   Test data is produced from the same Fuzz and Expected generators above except messages are given to both new and old implementations.
+	 *   Both implementations must produce the exact same results. 
+	 * 
+	 */
+	
+	
+	@Ignore
 	public void testStages() throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
 		GraphManager gm = new GraphManager();		
 		ClientAPIFactory.clientAPI(gm);
@@ -72,7 +106,7 @@ public class TestStages {
 	//TODO: each test must start at known clean state an not go far from there to ensure repro-script is very short.
 	
 	@SuppressWarnings("unused")
-	private void testSingleStage(Class targetStage, RingBufferConfig[] inputs, RingBufferConfig[] outputs) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
+	private void testSingleStage(Class targetStage, RingBufferConfig[] inputConfigs, RingBufferConfig[] outputConfigs) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
 		//NOTE: it will be a while before this is all sorted out 
 		//TODO: As a short term solution testing will be data driven with scripts and expect results
 		//      This will teach us what we need to know to build the generative examples.
@@ -91,7 +125,9 @@ public class TestStages {
 		//TODO: this conditional will be removed once we have general solutions for all the stages.
 		if (IdGenStage.class == targetStage) {
 			
-			System.err.println(targetStage.getSimpleName()+" "+inputs.length+" "+outputs.length);
+			final long testDuration = 10000;
+			
+			log.info("begin testing {}",targetStage);
 			
 			GraphManager gm = new GraphManager();
 			
@@ -102,32 +138,31 @@ public class TestStages {
 			
 			//NOTE: Use RingBufferConfig queue size so we only test for the case that is built and deployed.
 			
-			RingBuffer testedToValidate = new RingBuffer(outputs[0]);
-			RingBuffer validateToTested = new RingBuffer(inputs[0]);			
+			RingBuffer testedToValidate = new RingBuffer(outputConfigs[0]);
+			RingBuffer validateToGenerate = new RingBuffer(outputConfigs[0]);
 			
-			RingBuffer validateToGenerate = new RingBuffer(outputs[0]);
-			RingBuffer generateToValidate = new RingBuffer(inputs[0]);
+			RingBuffer validateToTested = new RingBuffer(inputConfigs[0]);			
+			RingBuffer generateToValidate = new RingBuffer(inputConfigs[0]);
 			
 			//TODO: once complete determine how we will do this with multiple queues.
 			Constructor constructor = targetStage.getConstructor(gm.getClass(), validateToTested.getClass(), testedToValidate.getClass());
 
-			PronghornStage toTest = (PronghornStage)constructor.newInstance(gm, validateToTested, testedToValidate);
-			
-			//TODO: how do we know that this is a producer? Must get from graph? without producer flag it will not shut down.
-			GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, toTest);
-						
-			
+			//all target test stages are market as producer for the duration of this test run
+			GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, (PronghornStage)constructor.newInstance(gm, validateToTested, testedToValidate));
+									
 			//TODO: how is one of these defined and generated? Can this be built by proxy?
 			
 			//validation shuts down when the producers on both end have already shut down.
 			new GeneralValidationStage(gm, new RingBuffer[]{testedToValidate, generateToValidate},
 					                       new RingBuffer[]{validateToTested, validateToGenerate},
 					                       genIdValidator());
-			
+
 			//generator is always a producer and must be marked as such.
-			GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER,new GeneralGeneratorStage(gm, new RingBuffer[]{validateToGenerate},
+			GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER,
+					                  new GeneralGeneratorStage(gm,
+					                      new RingBuffer[]{validateToGenerate},
                     					  new RingBuffer[]{generateToValidate},
-                    					  random, genIdGenerator()));
+                    					  random, genIdGenerator(testDuration)));
 			
 			 MonitorConsoleStage.attach(gm); 
 			 
@@ -135,17 +170,13 @@ public class TestStages {
 			StageScheduler scheduler = new ThreadPerStageScheduler(gm);
 			
 			scheduler.startup();
-
-			Thread.sleep(10000);
+			final long shutdownWindow = 1000;//No shutdown should every take longer than this.
+			scheduler.awaitTermination(testDuration+shutdownWindow, TimeUnit.MILLISECONDS);
 			
-			scheduler.shutdown();
-			
-			scheduler.awaitTermination(3000, TimeUnit.MILLISECONDS);
-			
-			System.err.println(testedToValidate);
-			System.err.println(validateToTested);
-			System.err.println(validateToGenerate);
-			System.err.println(generateToValidate);
+//			System.err.println(testedToValidate);
+//			System.err.println(validateToTested);
+//			System.err.println(validateToGenerate);
+//			System.err.println(generateToValidate);
 			
 			
 			
@@ -156,7 +187,7 @@ public class TestStages {
 	}
 
 
-	private GGSGenerator genIdGenerator() {
+	private GGSGenerator genIdGenerator(final long testDuration) {
 		return new GGSGenerator() {
 			
 			private final int length = 1<<16;
@@ -165,6 +196,7 @@ public class TestStages {
 			private final int[] values = new int[length]; //maximum of 65536 id values
 			private long head = 0;
 			private long tail = 0;
+			private long stopTime = System.currentTimeMillis()+testDuration;
 			
 			@Override
 			public boolean generate(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs, Random random) {
@@ -172,28 +204,32 @@ public class TestStages {
 				int sizeOfFragment = RingBuffer.from(inputs[0]).fragDataSize[theOneMessage];
 				
 				
-				
-				
 				//TODO: drop some as they are sent
+				
 				assert(1==outputs.length) : "IdGen can only support a single queue of release ranges";
 				
 				
 				RingBuffer outputRing = outputs[0];
-				while (roomToLowLevelWrite(outputRing, sizeOfFragment) ) {
+				while ( tail<head && roomToLowLevelWrite(outputRing, sizeOfFragment)) {
 				    
 					addMsgIdx(outputRing, theOneMessage);	
 					
 					//assemble a single run
-					int last = -1;
-					int value = 0;
 					long t = tail;
-					while (t<head & ((-1==last) || (last+1==value) ) ) {
-						value = values[mask&(int)t++];
-						last = value;
+					{
+						int last = -1;
+						int value = 0;
+						int limit = Integer.MAX_VALUE;//IdGenStage.MAX_BLOCK_SIZE; TODO: use random  number here to mix up the return blocks
+						while (--limit>=0 &&  t<head && ( (1+last == (value = values[mask&(int)t++])) | (-1==last) ) ) {
+							last = value;						
+						}
 					}
-					
-					//publish tail to t exclusive					
-					int range = (0xFFFF & values[mask&(int)tail]) | (0xFFFF & (values[mask&(int)t]>>16) );
+					//publish tail to t exclusive	
+					int value = values[mask&(int)tail];					
+					int range = (0xFFFF & value) | ( (0xFFFF & (int)(value+t-tail))<<16);
+			
+					log.info("Generator produce range "+IdGenStage.rangeToString(range));
+										
 					tail = t;
 					RingBuffer.addIntValue(range, outputRing);
 					
@@ -203,21 +239,30 @@ public class TestStages {
 				
 				
 				
-				//gather all the released ranges
+				//get new ranges
 				int i = inputs.length;
 				while (--i>=0) {
 					RingBuffer inputRing = inputs[i];
-					while (contentToLowLevelRead(inputRing, sizeOfFragment)) {
+					while (contentToLowLevelRead(inputRing, sizeOfFragment) && ((tail+65534)-head)>IdGenStage.MAX_BLOCK_SIZE ) {
 						int msgIdx = RingBuffer.takeMsgIdx(inputRing);
 						assert(theOneMessage == msgIdx);
 						
-						int value = RingBuffer.takeValue(inputRing);
-						int idx = value & 0xFFFF;
-						int limit = (value >> 16) & 0xFFFF;
+						int range = RingBuffer.takeValue(inputRing);
 						
-						while(idx<limit) {
+						log.info("Generator consume range "+IdGenStage.rangeToString(range));
+										
+						
+						int idx = range & 0xFFFF;
+						int limit = (range >> 16) & 0xFFFF;
+						
+						int count = limit-idx;
+						if (count>IdGenStage.MAX_BLOCK_SIZE) {
+							System.err.println("TOO many in one call "+count); //TODO: move test to validation
+							return false;
+						}
+												
+						while(idx<limit) {//room is guaranteed by head tail check in while definition
 							values[mask & (int)head++] = idx++;
-							//TODO: confirm that we are not over flowing
 						}						
 						
 						RingBuffer.readBytesAndreleaseReadLock(inputRing);
@@ -230,7 +275,7 @@ public class TestStages {
 								
 
 				
-				return true;
+				return System.currentTimeMillis()<stopTime;
 				
 			}
 		};
@@ -243,59 +288,71 @@ public class TestStages {
 			final byte[] testSpace = new byte[1 << 16];// 0 to 65535
 			final int theOneMessage = 0;
 			long total=0;
-
+			final String[] label = new String[]{"Tested","Generator"};
+			
 			@Override
 			public boolean validate(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs) {
 				int sizeOfFragment = RingBuffer.from(inputs[0]).fragDataSize[theOneMessage];
 				assert(inputs.length == outputs.length);
 				assert(2 == outputs.length);
 
-				byte i = 2; // 0 we expect to find 0 and change to 1, 1 we
+				byte j = 2; // 0 we expect to find 0 and change to 1, 1 we
 							// expect to find 1 and change to zero.
-				while (--i >= 0) {
+				
+				//TODO: remove loop
+				while (--j >= 0) {
 
-					if (contentToLowLevelRead(inputs[i], sizeOfFragment)
-							&& roomToLowLevelWrite(outputs[i], sizeOfFragment)) {
+					
+					final byte expected = j;
+					final byte toggle = (byte) ((expected + 1) & 1);
+					
+					boolean contentToLowLevelRead = contentToLowLevelRead(inputs[expected], sizeOfFragment);
+					boolean roomToLowLevelWrite = roomToLowLevelWrite(outputs[toggle], sizeOfFragment);
+										
+					if (contentToLowLevelRead && roomToLowLevelWrite) {
 
-						int msgIdx = RingBuffer.takeMsgIdx(inputs[i]);
-						assert(theOneMessage == msgIdx);
-						addMsgIdx(outputs[i], msgIdx);
+						int msgIdx = RingBuffer.takeMsgIdx(inputs[expected]);
+						if (theOneMessage != msgIdx) {
+							System.err.println(label[expected]+" bad message found "+msgIdx);
+							return false;
+						};
 
-						int value = RingBuffer.takeValue(inputs[i]);
+						int range = RingBuffer.takeValue(inputs[expected]);
 
-						int idx = value & 0xFFFF; // TODO: helper method to get
-													// the shorts would be nice
-													// here
-						int limit = (value >> 16) & 0xFFFF;
+						log.info("Validation {} to {} range {}",label[expected],label[toggle],IdGenStage.rangeToString(range));
+						
+						
+						int idx = range & 0xFFFF; // TODO: helper method to get
+											      // the shorts would be nice
+												  // here
+						int limit = (range >> 16) & 0xFFFF;
+						
+						int count = limit-idx;
+						if (count<1) {
+							System.err.println(label[expected]+" message must contain at least 1 value in the range, found "+count+" in value "+Integer.toHexString(range));
+							return false;
+						}
+											
+						
 
-						final byte expected = i;
-						final byte toggle = (byte) ((expected + 1) & 1);
-
-						total += (long)(limit-idx);
+						total += (long)count;
 						// test for the expected values
 						while (idx < limit) {
 							if (expected != testSpace[idx]) {
-							//	System.err.println(i+" found error XXX at "+idx+" expected "+expected);
-								
-								// TODO: log this as an error
+								System.err.println("Validator found "+label[expected]+" toggle error at "+idx+" expected "+expected);
 								return false;
 							}
-//							else {
-//								if (idx<100) {
-//									System.err.println(i+" ok "+idx+" set "+toggle);
-//								}
-//							}
-							
 							
 							testSpace[idx++] = toggle;
 						}
 
-						RingBuffer.addIntValue(value, outputs[i]);
-						publishWrites(outputs[i]);
-						RingBuffer.confirmLowLevelWrite(outputs[i], sizeOfFragment);
+						addMsgIdx(outputs[toggle], msgIdx);
+						RingBuffer.addIntValue(range, outputs[toggle]);
+						publishWrites(outputs[toggle]);
+						RingBuffer.confirmLowLevelWrite(outputs[toggle], sizeOfFragment);
 
-						RingBuffer.readBytesAndreleaseReadLock(inputs[i]);
-						RingBuffer.confirmLowLevelRead(inputs[i], sizeOfFragment);
+						RingBuffer.readBytesAndreleaseReadLock(inputs[expected]);
+						RingBuffer.confirmLowLevelRead(inputs[expected], sizeOfFragment);
 					}
 				}
 				return true;

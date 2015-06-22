@@ -27,6 +27,7 @@ public class GeneralGeneratorStage extends PronghornStage {
 	public void run() {
 		
 		if (!generator.generate(graphManager,inputs,outputs,random)) {
+			GraphManager.terminateInputStages(graphManager);
 			requestShutdown();
 		}
 		
