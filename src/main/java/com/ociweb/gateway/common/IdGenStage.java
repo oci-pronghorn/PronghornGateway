@@ -2,12 +2,9 @@ package com.ociweb.gateway.common;
 
 import static com.ociweb.pronghorn.ring.RingBuffer.*;
 
-import java.util.Arrays;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.ociweb.gateway.client.TestStages;
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
@@ -106,9 +103,15 @@ public class IdGenStage extends PronghornStage {
 	
 	public void releaseRange(int range) {
 		
-		int idx = Arrays.binarySearch(consumedRanges, 0, totalRanges, range);		
-		if (idx<0) {
-			int insertAt = -(idx+1);
+		int insertAt = findIndex(consumedRanges, 0, totalRanges, range);		
+		
+		int j = 0;
+		while (j<totalRanges) {
+			System.out.println(j+"   "+(consumedRanges[j]&0xFFFF));
+			j++;
+		}
+		
+		if (range != consumedRanges[insertAt]) {
 
 			log.info("IdGen release range {}",IdGenStage.rangeToString(range));
 			
@@ -140,16 +143,31 @@ public class IdGenStage extends PronghornStage {
 			}
 
 		} else {
+			
 			log.info("IdGen release range exact match {}",IdGenStage.rangeToString(range));
 			//exact match so just delete this row
-			int toCopy = -1 + totalRanges - idx;
-			System.arraycopy(consumedRanges, idx+1, consumedRanges, idx, toCopy);			
+			int toCopy = -1 + totalRanges - insertAt;
+			System.arraycopy(consumedRanges, insertAt+1, consumedRanges, insertAt, toCopy);			
 			totalRanges--;
 		}	
 	}
  	
 	
 	
+	private int findIndex(int[] consumedRanges, int from, int to, int target) {
+		int i = from;
+		int targetStart = 0xFFFF&target;
+		while (i<to &&  (0xFFFF&consumedRanges[i])<targetStart) {
+			i++;
+		}
+		if ((0xFFFF&consumedRanges[i])>targetStart) {
+			if ((0xFFFF&(consumedRanges[i]>>16) )>targetStart) {
+				return i-1;
+			}
+		}
+		return i;
+	}
+
 	/**
 	 * Find the biggest range then reserves and returns a block no bigger than MAX_BLOCK_SIZE
 	 * 
@@ -163,7 +181,7 @@ public class IdGenStage extends PronghornStage {
 		int idx = 0;
 		
 		//walk list of all reserved ranges and find the biggest gap between them
-		int lastBegin = 65534; //need room to use 65535 as the exclude end
+		int lastBegin = 30000;//65534; //need room to use 65535 as the exclude end
 		int i = totalRanges;
 		while (--i>=0) {
 			int j = consumedRanges[i];
@@ -184,6 +202,9 @@ public class IdGenStage extends PronghornStage {
 		//last range that starts at 0 and goes up to first reserved range
 		int len = lastBegin-0;
 		if (len>max) {
+			//TODO: these are supposted to be in unsigned order however if high bit gets set its a negative!!
+			//System.err.println("last len:"+ Arrays.toString(consumedRanges));
+			
 			max = len;
 			maxStart = 0;
 			idx=0;
@@ -199,6 +220,9 @@ public class IdGenStage extends PronghornStage {
 		int rangeCount = Math.min(max, MAX_BLOCK_SIZE);
 		int newReservation = maxStart | ((maxStart+rangeCount)<<16);
 
+		log.info("IdGen reserve range {}",IdGenStage.rangeToString(newReservation));
+		
+		
 		//insert new reservation
 		if (idx<totalRanges) {
 			System.arraycopy(consumedRanges, idx, consumedRanges, idx+1, totalRanges-idx);
