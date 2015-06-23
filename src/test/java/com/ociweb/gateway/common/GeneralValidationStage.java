@@ -10,6 +10,7 @@ public class GeneralValidationStage extends PronghornStage{
 	private final RingBuffer[] outputs;
 	private final GraphManager graphManager;
 	private final GVSValidator validator;
+	private boolean foundError = false;
 	
 	public GeneralValidationStage(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs, GVSValidator validator) {
 		super(graphManager, inputs, outputs);
@@ -22,6 +23,7 @@ public class GeneralValidationStage extends PronghornStage{
 	@Override
 	public void run() {		
 		if (!validator.validate(graphManager, inputs, outputs)) {
+			foundError = true;
 			//force hard shut down of stage under test and generator
 			GraphManager.terminateInputStages(graphManager);
 			//force hard shut down of this stage
@@ -32,6 +34,10 @@ public class GeneralValidationStage extends PronghornStage{
 	@Override
 	public void shutdown() {
 		System.out.println("shutdown validator :"+validator.status());
+	}
+
+	public boolean foundError() {
+		return foundError;
 	}
 
 }

@@ -101,19 +101,34 @@ public class IdGenStage extends PronghornStage {
 		return Integer.toString(0xFFFF&range)+"->"+Integer.toString(0xFFFF&(range>>16));
 	}
 	
+	private void debug(String template, int range) {
+		//Method prevents garbage creation when debug mode is not enabled
+		if (log.isDebugEnabled()) {
+			log.debug(template,IdGenStage.rangeToString(range));
+		}
+	}
+	
 	public void releaseRange(int range) {
 		
 		int insertAt = findIndex(consumedRanges, 0, totalRanges, range);		
 		
-		int j = 0;
-		while (j<totalRanges) {
-			System.out.println(j+"   "+(consumedRanges[j]&0xFFFF));
-			j++;
+		
+		//TODO: AAAAAA, rlease can split a row and need to make a new one.
+		
+		if ((0xFFFF&range) != (0xFFFF&consumedRanges[insertAt]) && totalRanges>0 && insertAt<totalRanges) {
+			log.warn("**************** FEATURE NOT YET IMPLEMENTED");
 		}
+		
+		
+//		int j = 0;
+//		while (j<totalRanges) {
+//			System.out.println(j+"   "+(consumedRanges[j]&0xFFFF));
+//			j++;
+//		}
 		
 		if (range != consumedRanges[insertAt]) {
 
-			log.info("IdGen release range {}",IdGenStage.rangeToString(range));
+			debug("IdGen release range {}",range);
 			
 			//this number comes before that value at this position
 			//must erase up to end however for bad messages end may be before start.
@@ -128,13 +143,16 @@ public class IdGenStage extends PronghornStage {
 			}
 			//must delete all rows but the last one may be split
 			
-			int lastRow = rows+insertAt-1;
-			int lastEnd = (0xFFFF&(consumedRanges[lastRow]>>16));
-			if (releaseEnd<lastEnd) {
-				//this is a partial row so modify rather than clear
-				consumedRanges[lastRow] = (0xFFFF&releaseEnd) | (lastEnd<<16);
-				rows--;//this row is done
+			int lastRow = rows+insertAt-1;		
+			if (totalRanges>0) {
+				int lastEnd = (0xFFFF&(consumedRanges[lastRow]>>16));
+				if (releaseEnd<lastEnd) {
+					//this is a partial row so modify rather than clear
+					consumedRanges[lastRow] = (0xFFFF&releaseEnd) | (lastEnd<<16);
+					rows--;//this row is done
+				}
 			}
+			
 			//all remaining rows are deleted
 			if (rows>0) {
 				int toCopy = -rows + totalRanges - insertAt;					
@@ -144,10 +162,12 @@ public class IdGenStage extends PronghornStage {
 
 		} else {
 			
-			log.info("IdGen release range exact match {}",IdGenStage.rangeToString(range));
+			debug("IdGen release range exact match {}",range);
 			//exact match so just delete this row
 			int toCopy = -1 + totalRanges - insertAt;
-			System.arraycopy(consumedRanges, insertAt+1, consumedRanges, insertAt, toCopy);			
+			if (toCopy>0) {
+				System.arraycopy(consumedRanges, insertAt+1, consumedRanges, insertAt, toCopy);		
+			}
 			totalRanges--;
 		}	
 	}
@@ -160,7 +180,7 @@ public class IdGenStage extends PronghornStage {
 		while (i<to &&  (0xFFFF&consumedRanges[i])<targetStart) {
 			i++;
 		}
-		if ((0xFFFF&consumedRanges[i])>targetStart) {
+		if (i>0 && (0xFFFF&consumedRanges[i])>targetStart) {
 			if ((0xFFFF&(consumedRanges[i]>>16) )>targetStart) {
 				return i-1;
 			}
@@ -181,7 +201,7 @@ public class IdGenStage extends PronghornStage {
 		int idx = 0;
 		
 		//walk list of all reserved ranges and find the biggest gap between them
-		int lastBegin = 30000;//65534; //need room to use 65535 as the exclude end
+		int lastBegin = 65534; //need room to use 65535 as the exclude end
 		int i = totalRanges;
 		while (--i>=0) {
 			int j = consumedRanges[i];
@@ -194,6 +214,9 @@ public class IdGenStage extends PronghornStage {
 				max = len;
 				maxStart = end;
 				idx=i+1;
+//				if (max>MAX_BLOCK_SIZE) {
+//					break;
+//				}
 			}
 			
 			lastBegin = begin;
@@ -220,7 +243,7 @@ public class IdGenStage extends PronghornStage {
 		int rangeCount = Math.min(max, MAX_BLOCK_SIZE);
 		int newReservation = maxStart | ((maxStart+rangeCount)<<16);
 
-		log.info("IdGen reserve range {}",IdGenStage.rangeToString(newReservation));
+		debug("IdGen reserve range {}",newReservation);
 		
 		
 		//insert new reservation
