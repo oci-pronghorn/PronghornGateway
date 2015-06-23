@@ -27,8 +27,10 @@ public class GeneralGeneratorStage extends PronghornStage {
 	public void run() {
 		
 		if (!generator.generate(graphManager,inputs,outputs,random)) {
+			//force hard shut down of stage under test
 			GraphManager.terminateInputStages(graphManager);
-			requestShutdown();
+			//force hard shut down of this stage
+			GraphManager.setStateToShutdown(graphManager, stageId);
 		}
 		
 	}

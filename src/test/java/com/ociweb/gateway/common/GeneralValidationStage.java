@@ -22,8 +22,10 @@ public class GeneralValidationStage extends PronghornStage{
 	@Override
 	public void run() {		
 		if (!validator.validate(graphManager, inputs, outputs)) {
+			//force hard shut down of stage under test and generator
 			GraphManager.terminateInputStages(graphManager);
-			requestShutdown(); //stop the test we found an error
+			//force hard shut down of this stage
+			GraphManager.setStateToShutdown(graphManager, stageId);
 		}
 	}
 	

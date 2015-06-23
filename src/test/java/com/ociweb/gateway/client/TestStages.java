@@ -62,7 +62,7 @@ public class TestStages {
 	 */
 	
 	
-	@Ignore
+	@Test
 	public void testStages() throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
 		GraphManager gm = new GraphManager();		
 		ClientAPIFactory.clientAPI(gm);
@@ -143,6 +143,11 @@ public class TestStages {
 			
 			RingBuffer validateToTested = new RingBuffer(inputConfigs[0]);			
 			RingBuffer generateToValidate = new RingBuffer(inputConfigs[0]);
+	
+			//splitter will populate this larger ring, TODO: must make size as large as one test cycle
+			RingBuffer generateToReduce = new RingBuffer(inputConfigs[0]);
+			
+			
 			
 			//TODO: once complete determine how we will do this with multiple queues.
 			Constructor constructor = targetStage.getConstructor(gm.getClass(), validateToTested.getClass(), testedToValidate.getClass());
@@ -319,13 +324,15 @@ public class TestStages {
 
 						int range = RingBuffer.takeValue(inputs[expected]);
 
-						log.info("Validation {} to {} range {}",label[expected],label[toggle],IdGenStage.rangeToString(range));
 						
 						
 						int idx = range & 0xFFFF; // TODO: helper method to get
 											      // the shorts would be nice
 												  // here
 						int limit = (range >> 16) & 0xFFFF;
+						
+						log.info("Validation {} to {} range {} ",label[expected],label[toggle],IdGenStage.rangeToString(range));
+						
 						
 						int count = limit-idx;
 						if (count<1) {
