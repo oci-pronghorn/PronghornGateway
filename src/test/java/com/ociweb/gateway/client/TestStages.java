@@ -11,10 +11,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.ociweb.gateway.common.FuzzGeneratorStage;
+import com.ociweb.gateway.common.FuzzValidationStage;
 import com.ociweb.gateway.common.GGSGenerator;
 import com.ociweb.gateway.common.GVSValidator;
-import com.ociweb.gateway.common.GeneralGeneratorStage;
-import com.ociweb.gateway.common.GeneralValidationStage;
+import com.ociweb.gateway.common.ExpectedUseGeneratorStage;
+import com.ociweb.gateway.common.ExpectedUseValidationStage;
 import com.ociweb.gateway.common.IdGenStage;
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.ring.RingBufferConfig;
@@ -58,7 +59,7 @@ public class TestStages {
 	 */
 	
 	
-	@Ignore
+	@Test
 	public void testStages() throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
 		GraphManager gm = new GraphManager();		
 		ClientAPIFactory.clientAPI(gm);
@@ -70,11 +71,7 @@ public class TestStages {
 			if (null!=stage) {
 				//filter out any stages dedicated to monitoring
 				if (null ==	GraphManager.getAnnotation(gm, stage, GraphManager.MONITOR, null)) {
-					//build test instance, must be different instance than one found in the graph.
-					
-					//TODO: filter out the producers here to do different tests
-					
-					
+
 					int inputs = GraphManager.getInputPipeCount(gm, stage);
 					//need array of RingBufferConfig objects.
 					RingBufferConfig[] inputConfigs = new RingBufferConfig[inputs];
@@ -90,6 +87,7 @@ public class TestStages {
 						outputConfigs[i]=GraphManager.getOutputPipe(gm, stage, i).config();
 					}
 									
+					//build test instances,are different instances than ones found in the graph.
 					testSingleStage(stage.getClass(),inputConfigs,outputConfigs);
 									
 				}
@@ -103,7 +101,7 @@ public class TestStages {
 	
 	@SuppressWarnings("unused")
 	private void testSingleStage(Class targetStage, RingBufferConfig[] inputConfigs, RingBufferConfig[] outputConfigs) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
-		long testDuration = 1000; //keep short for now to save limited time on build server
+		long testDuration = 500; //keep short for now to save limited time on build server
 
 		//TODO: this conditional will be removed once we have general solutions for all the stages.
 		if (IdGenStage.class == targetStage) {
@@ -115,14 +113,16 @@ public class TestStages {
 			int generatorSeed = 42;
 			Random random = new Random(generatorSeed);
 						
-			runExpectedUseTest(targetStage, inputConfigs, outputConfigs, testDuration, validator, generator, random);			
-			runFuzzTest(targetStage, inputConfigs, outputConfigs, testDuration, random);
+			runExpectedUseTest(targetStage, inputConfigs, outputConfigs, testDuration, validator, generator, random);	
+			
+			//Disabled until finished,   TODO: Needs dumper to check actual output.
+			//runFuzzTest(targetStage, inputConfigs, outputConfigs, testDuration, random);
 		}
 		
 	}
 
 
-	private void runFuzzTest(Class targetStage, RingBufferConfig[] inputConfigs, RingBufferConfig[] outputConfigs, long testDuration, Random random) {
+	private void runFuzzTest(Class targetStage, RingBufferConfig[] inputConfigs, RingBufferConfig[] outputConfigs, long testDuration, Random random) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
 		log.info("begin 'fuzz' testing {}",targetStage);
 		
 		GraphManager gm = new GraphManager();
@@ -130,16 +130,53 @@ public class TestStages {
 		RingBuffer[] inputRings = buildRings(inputConfigs);	
 		RingBuffer[] outputRings = buildRings(outputConfigs);	
 		
-		int i = outputRings.length;
+		int i = inputRings.length;
 		while (--i>=0) {
 			new FuzzGeneratorStage(gm, random, testDuration, inputRings[i]);
 		}
 		
-		//TODO: test must check for hang
-		//TODO: test much check for throw
-		//TODO: test much check output rings for valid messages if any
+		//TODO: test must check for hang, needs special scheduler that tracks time and reports longest active actor
+		//TODO: test much check for throw, done by scheduler closing early, should still be running when we request shutdown
+		//TODO: test much check output rings for valid messages if any, done inside FuzzValidationStage
 		
+		int j = outputRings.length;
+		FuzzValidationStage[] valdiators = new FuzzValidationStage[j];
+		while (--j>=0) {
+			valdiators[j] = new FuzzValidationStage(gm, outputRings[j]);
+			
+		}
 		
+		//TODO: once complete determine how we will do this with multiple queues.
+		Constructor constructor = targetStage.getConstructor(gm.getClass(), inputRings.getClass(), outputRings.getClass());
+				
+		//all target test stages are market as producer for the duration of this test run
+		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, (PronghornStage)constructor.newInstance(gm, inputRings, outputRings));	
+		
+		if (log.isDebugEnabled()) {
+			MonitorConsoleStage.attach(gm);
+		}
+		 
+		//TODO: create new single threaded deterministic scheduler.
+		StageScheduler scheduler = new ThreadPerStageScheduler(gm);
+		
+		scheduler.startup();	
+						
+		boolean cleanTerminate = scheduler.awaitTermination(testDuration+SHUTDOWN_WINDOW, TimeUnit.MILLISECONDS);
+		
+		boolean noError = false;
+		j = valdiators.length;
+		while (--j>=0) {
+			noError |= valdiators[j].foundError();
+		}
+		
+		if (!cleanTerminate || !noError) {
+			for (RingBuffer ring: outputRings) {
+				log.info("{}->Valdate {}",targetStage,ring);
+			}
+			for (RingBuffer ring: inputRings) {
+				log.info("Generate->{} {}",targetStage,ring);
+			}			
+		}
 		
 	}
 
@@ -171,18 +208,17 @@ public class TestStages {
 		RingBuffer[] generatorInputs = validateToGenerate;
 		RingBuffer[] generatorOutputs = generateToValidate;
 		
-		//TODO: once complete determine how we will do this with multiple queues.
 		Constructor constructor = targetStage.getConstructor(gm.getClass(), validateToTested.getClass(), testedToValidate.getClass());
 
 		//all target test stages are market as producer for the duration of this test run
 		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, (PronghornStage)constructor.newInstance(gm, validateToTested, testedToValidate));
 								
 		//validation shuts down when the producers on both end have already shut down.
-		GeneralValidationStage valdiationStage = new GeneralValidationStage(gm, validationInputs, validationOutputs, validator);
+		ExpectedUseValidationStage valdiationStage = new ExpectedUseValidationStage(gm, validationInputs, validationOutputs, validator);
 
 		//generator is always a producer and must be marked as such.			
 		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER,
-				                  new GeneralGeneratorStage(gm, generatorInputs, generatorOutputs, random, generator));
+				                  new ExpectedUseGeneratorStage(gm, generatorInputs, generatorOutputs, random, generator));
 		
 		if (log.isDebugEnabled()) {
 			MonitorConsoleStage.attach(gm);

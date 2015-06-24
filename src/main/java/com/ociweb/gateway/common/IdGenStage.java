@@ -72,7 +72,7 @@ public class IdGenStage extends PronghornStage {
 				
 				releaseRange(RingBuffer.takeValue(inputRing));
 				
-				RingBuffer.readBytesAndreleaseReadLock(inputRing);
+				RingBuffer.releaseReads(inputRing);
 				RingBuffer.confirmLowLevelRead(inputRing, sizeOfFragment);
 			}
 		}
@@ -117,14 +117,18 @@ public class IdGenStage extends PronghornStage {
 		
 		if ((0xFFFF&range) != (0xFFFF&consumedRanges[insertAt]) && totalRanges>0 && insertAt<totalRanges) {
 			log.warn("**************** FEATURE NOT YET IMPLEMENTED");
+			
+			int j = 0;
+			while (j<totalRanges) {
+				log.warn(j+"   "+rangeToString(consumedRanges[j]));
+				j++;
+			}
+		    log.warn("insert at "+insertAt+" value "+rangeToString(range));
+			
+			System.exit(-1);
 		}
 		
 		
-//		int j = 0;
-//		while (j<totalRanges) {
-//			System.out.println(j+"   "+(consumedRanges[j]&0xFFFF));
-//			j++;
-//		}
 		
 		if (range != consumedRanges[insertAt]) {
 
@@ -214,9 +218,9 @@ public class IdGenStage extends PronghornStage {
 				max = len;
 				maxStart = end;
 				idx=i+1;
-//				if (max>MAX_BLOCK_SIZE) {
-//					break;
-//				}
+				if (max>=MAX_BLOCK_SIZE) {
+     				return reserveRange(maxStart, idx, MAX_BLOCK_SIZE);
+				}
 			}
 			
 			lastBegin = begin;
@@ -241,6 +245,10 @@ public class IdGenStage extends PronghornStage {
 		//we now know where the largest range is and where it starts.
 		
 		int rangeCount = Math.min(max, MAX_BLOCK_SIZE);
+		return reserveRange(maxStart, idx, rangeCount);
+	}
+
+	private int reserveRange(int maxStart, int idx, int rangeCount) {
 		int newReservation = maxStart | ((maxStart+rangeCount)<<16);
 
 		debug("IdGen reserve range {}",newReservation);

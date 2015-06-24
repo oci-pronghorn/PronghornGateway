@@ -4,7 +4,7 @@ import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
-public class GeneralValidationStage extends PronghornStage{
+public class ExpectedUseValidationStage extends PronghornStage{
 
 	private final RingBuffer[] inputs;
 	private final RingBuffer[] outputs;
@@ -12,7 +12,7 @@ public class GeneralValidationStage extends PronghornStage{
 	private final GVSValidator validator;
 	private boolean foundError = false;
 	
-	public GeneralValidationStage(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs, GVSValidator validator) {
+	public ExpectedUseValidationStage(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs, GVSValidator validator) {
 		super(graphManager, inputs, outputs);
 		this.inputs = inputs;
 		this.outputs = outputs;

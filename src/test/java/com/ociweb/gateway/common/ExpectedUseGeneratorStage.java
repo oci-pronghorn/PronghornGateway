@@ -6,7 +6,7 @@ import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
-public class GeneralGeneratorStage extends PronghornStage {
+public class ExpectedUseGeneratorStage extends PronghornStage {
 
 	private final Random random;
 	private final GraphManager graphManager;
@@ -14,7 +14,7 @@ public class GeneralGeneratorStage extends PronghornStage {
 	private final RingBuffer[] outputs;
 	private final GGSGenerator generator;
 	
-	public GeneralGeneratorStage(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs, Random random, GGSGenerator generator) {
+	public ExpectedUseGeneratorStage(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs, Random random, GGSGenerator generator) {
 		super(graphManager, inputs, outputs);
 		this.graphManager = graphManager;
 		this.inputs = inputs;

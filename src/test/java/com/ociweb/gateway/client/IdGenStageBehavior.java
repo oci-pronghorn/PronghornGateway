@@ -57,23 +57,27 @@ public class IdGenStageBehavior{
 					//assemble a single run
 					long t = tail;
 					{
-						int last = -1;
-						int value = 0;
+						int last =  -1;
+						int value = values[mask&(int)tail];
 						int limit = Integer.MAX_VALUE;//IdGenStage.MAX_BLOCK_SIZE; TODO: use random  number here to mix up the return blocks
-						while (--limit>=0 &&  t<head && ( (1+last == (value = values[mask&(int)t++])) | (-1==last) ) ) {
-							last = value;						
-						}
+						do {
+							last = value;
+							value = values[mask&(int)++t];
+						} while (1+last==value && t<head && --limit>=0);
+
 					}
 					//publish tail to t exclusive	
-					int value = values[mask&(int)tail];					
-					int range = (0xFFFF & value) | ( (0xFFFF & (int)(value+t-tail))<<16);
+					int value = values[mask&(int)tail];
+					long run = t-tail;
+					int range = (0xFFFF & value) | ( (0xFFFF & (int)(value+run))<<16);
 			
 					debug("Generator produce range {}",range);
 										
 					tail = t;
+					
 					RingBuffer.addIntValue(range, outputRing);
 					
-					publishWrites(outputRing);	
+					publishWrites(outputRing);
 					RingBuffer.confirmLowLevelWrite(outputRing, sizeOfFragment);
 				}
 				
@@ -93,6 +97,7 @@ public class IdGenStageBehavior{
 										
 						
 						int idx = range & 0xFFFF;
+						
 						int limit = (range >> 16) & 0xFFFF;
 						
 						int count = limit-idx;
@@ -102,8 +107,11 @@ public class IdGenStageBehavior{
 						}
 												
 						while(idx<limit) {//room is guaranteed by head tail check in while definition
+							
+							
 							values[mask & (int)head++] = idx++;
 						}						
+					///	System.err.println("set value "+(0xFFFF&(head-1))+" "+(head-1)+" value "+(idx-1));
 						
 						RingBuffer.readBytesAndreleaseReadLock(inputRing);
 						RingBuffer.confirmLowLevelRead(inputRing, sizeOfFragment);
@@ -179,27 +187,27 @@ public class IdGenStageBehavior{
 							int failureIdx = -1;
 							boolean exit = false;
 							while (idx < limit) {
-	//							if (expected != testSpace[idx]) {
-	//								if (failureIdx < 0) {
-	//									failureIdx = idx;
-	//									exit = true;
-	//								}								
-	//							} else {
-	//								if (failureIdx>=0) {								
-	//									System.err.println("Validator found "+label[expected]+" toggle error at "+failureIdx+" up to "+idx+" expected "+expected+" released up to "+limit);
-	//									failureIdx = -1;
-	//								}								
-	//							}
+								if (expected != testSpace[idx]) {
+									if (failureIdx < 0) {
+										failureIdx = idx;
+										exit = true;
+									}								
+								} else {
+									if (failureIdx>=0) {								
+										System.err.println("Validator found "+label[expected]+" toggle error at "+failureIdx+" up to "+idx+" expected "+expected+" released up to "+limit);
+										failureIdx = -1;
+									}								
+								}
 								
 								testSpace[idx++] = toggle;
 							}
-	//						if (failureIdx>=0) {								
-	//							System.err.println("Validator found "+label[expected]+" toggle error at "+failureIdx+" up to "+limit+" expected "+expected+" released up to "+limit);
-	//						    exit = true;
-	//						}
-	//						if (exit) {
-	//							return false;
-	//						}
+							if (failureIdx>=0) {								
+								System.err.println("Validator found "+label[expected]+" toggle error at "+failureIdx+" up to "+limit+" expected "+expected+" released up to "+limit);
+							    exit = true;
+							}
+							if (exit) {
+								return false;
+							}
 							
 	
 							addMsgIdx(outputs[toggle], msgIdx);
