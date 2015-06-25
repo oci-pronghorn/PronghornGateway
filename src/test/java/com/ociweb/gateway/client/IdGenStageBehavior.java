@@ -7,12 +7,14 @@ import static com.ociweb.pronghorn.ring.RingBuffer.roomToLowLevelWrite;
 
 import java.util.Random;
 
+import org.junit.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.ociweb.gateway.common.GGSGenerator;
 import com.ociweb.gateway.common.GVSValidator;
 import com.ociweb.gateway.common.IdGenStage;
+import com.ociweb.gateway.common.TestFailureDetails;
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
@@ -42,10 +44,26 @@ public class IdGenStageBehavior{
 			public boolean generate(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs, Random random) {
 				final int theOneMessage = 0;
 				int sizeOfFragment = RingBuffer.from(inputs[0]).fragDataSize[theOneMessage];
+				int maxReturnBlockSize = 1+random.nextInt(2*IdGenStage.MAX_BLOCK_SIZE);// 1 up to 2x the block size used for reserving ranges
 				
+
+				//mix up the ranges to simulate late returning values in fllight
+				int maxMix = 0;//70; //max in flight
+				int oneFailureIn = 10000; //NOTE: as this ratio gets worse the speed drops off
+				//NOTE: this does not test any "lost" ids, TODO: C, this would be a good test to add later.
 				
-				//TODO: drop some as they are sent
-				
+				long mixStart = Math.max(tail, head-maxMix);
+				long k = head-mixStart;
+				//do the shuffle.
+				while (--k>=1) {
+					if (0==random.nextInt(oneFailureIn)) {
+						//mix forward to values can move a long way
+						int temp = values[mask&(int)(head-(k-1))];
+						values[mask&(int)(head-(k-1))] = values[mask&(int)(head-k)];
+						values[mask&(int)(head-k)] = temp;
+					}					
+				}
+									
 				assert(1==outputs.length) : "IdGen can only support a single queue of release ranges";
 				
 				
@@ -59,7 +77,7 @@ public class IdGenStageBehavior{
 					{
 						int last =  -1;
 						int value = values[mask&(int)tail];
-						int limit = Integer.MAX_VALUE;//IdGenStage.MAX_BLOCK_SIZE; TODO: use random  number here to mix up the return blocks
+						int limit = maxReturnBlockSize;
 						do {
 							last = value;
 							value = values[mask&(int)++t];
@@ -102,25 +120,18 @@ public class IdGenStageBehavior{
 						
 						int count = limit-idx;
 						if (count>IdGenStage.MAX_BLOCK_SIZE) {
-							System.err.println("TOO many in one call "+count); //TODO: move test to validation
+							System.err.println("TOO many in one call "+count); //TODO: AAA,  move test to validation
 							return false;
 						}
 												
-						while(idx<limit) {//room is guaranteed by head tail check in while definition
-							
-							
+						while(idx<limit) {//room is guaranteed by head tail check in while definition														
 							values[mask & (int)head++] = idx++;
 						}						
-					///	System.err.println("set value "+(0xFFFF&(head-1))+" "+(head-1)+" value "+(idx-1));
 						
-						RingBuffer.readBytesAndreleaseReadLock(inputRing);
+						RingBuffer.releaseReads(inputRing);
 						RingBuffer.confirmLowLevelRead(inputRing, sizeOfFragment);
 					}
 				}
-				
-				//TODO: mix up the ranges 
-				
-								
 	
 				
 				return System.currentTimeMillis()<stopTime;
@@ -138,7 +149,7 @@ public class IdGenStageBehavior{
 				final String[] label = new String[]{"Tested","Generator"};
 				
 				@Override
-				public boolean validate(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs) {
+				public TestFailureDetails validate(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs) {
 					int sizeOfFragment = RingBuffer.from(inputs[0]).fragDataSize[theOneMessage];
 					assert(inputs.length == outputs.length);
 					assert(2 == outputs.length);
@@ -161,7 +172,7 @@ public class IdGenStageBehavior{
 							int msgIdx = RingBuffer.takeMsgIdx(inputs[expected]);
 							if (theOneMessage != msgIdx) {
 								System.err.println(label[expected]+" bad message found "+msgIdx);
-								return false;
+								return new TestFailureDetails("Corrupt Feed");
 							};
 	
 							int range = RingBuffer.takeValue(inputs[expected]);
@@ -179,7 +190,8 @@ public class IdGenStageBehavior{
 							int count = limit-idx;
 							if (count<1) {
 								System.err.println(label[expected]+" message must contain at least 1 value in the range, found "+count+" in value "+Integer.toHexString(range));
-								return false;
+								
+								return new TestFailureDetails("Missing Data");
 							}
 												
 							total += (long)count;
@@ -202,11 +214,21 @@ public class IdGenStageBehavior{
 								testSpace[idx++] = toggle;
 							}
 							if (failureIdx>=0) {								
-								System.err.println("Validator found "+label[expected]+" toggle error at "+failureIdx+" up to "+limit+" expected "+expected+" released up to "+limit);
+								System.err.println("Validator found "+label[expected]+" toggle error at "+failureIdx+" up to "+limit+" expected "+expected);
+								
 							    exit = true;
 							}
 							if (exit) {
-								return false;
+								
+								//Thinking:
+								///   if validate from Tested does not match expected state then...
+								//      Tested sent bad range or internal map is wrong
+								//      Internal map can not be wrong because it matches the data passed thru from the generator and previously checked
+								// SO... the new range from either tested or generated is always suspect for the error.
+								
+								//TODO: TestFailureDetails must take the needed seeds to repo the problem, this will not work however until deterministic scheduler is complete.
+								return new TestFailureDetails("Bad Match");
+								
 							}
 							
 	
@@ -215,11 +237,11 @@ public class IdGenStageBehavior{
 							publishWrites(outputs[toggle]);
 							RingBuffer.confirmLowLevelWrite(outputs[toggle], sizeOfFragment);
 	
-							RingBuffer.readBytesAndreleaseReadLock(inputs[expected]);
+							RingBuffer.releaseReads(inputs[expected]);
 							RingBuffer.confirmLowLevelRead(inputs[expected], sizeOfFragment);
 						}
 					}
-					return true;
+					return null;
 				}
 	
 				@Override

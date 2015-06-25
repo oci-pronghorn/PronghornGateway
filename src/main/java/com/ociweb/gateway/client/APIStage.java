@@ -8,8 +8,8 @@ import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
 public class APIStage extends PronghornStage {
 
-	private final RingBuffer idGenIn;
-	private final RingBuffer toConnection;
+	private final RingBuffer toConnection; //directly populated by external method calls, eg unknown thread
+	private final RingBuffer idGenIn; //used by same external thread
 	private final RingBuffer fromConnection;
 	 	
 	protected APIStage(GraphManager graphManager, RingBuffer idGenIn, RingBuffer conIn, RingBuffer conOut) {
@@ -24,46 +24,62 @@ public class APIStage extends PronghornStage {
 
 	@Override
 	public void run() {
-		// TODO Auto-generated method stub
+		// TODO read input queues and notify listeners of new data.
+		//what if listeners block?
 		
-		
-		//read idGen with low level, only 1 message type
-		//write con In with high level there are many message types and fields
 		//read cont out with high level there are many message types and fields
+		
+		//upon qos 2 ack will need to send response to connection
+        // do we need a second queue for this ack and another for the new requests, yes to avoid lock.
 		
 
 	}
 
+	//  public void addPublishAckListener(Object someListener) {
+	//	//   Called on PubRec and PubAck passes ID
+	//	//TODO: needs implementation
+	//}
+	//
+	//public void addSubcriptionListener(CharSequence topic, int QualityOfService, Object someListener) {
+	//	
+	//	//TODO: needs implementation
+	//	
+	//}
+	
+	
 	public void connect(CharSequence url, boolean someFlags) {
-		//TODO: needs implementation
+		//TODO:  form connect message and put it on the toConnectionQueue
+		// may want to synchronize these methods to protect against bad usages
 		
 	}
 	
 	public void disconnect() {
-		//TODO: needs implementation
+		//TODO:  form connect message and put it on the toConnectionQueue
+		// may want to synchronize these methods to protect against bad usages
+				
 	}
 	
 	public void publish(CharSequence topic, int QualityOfService, CharSequence payload) {
-		//TODO: needs implementation
+		//TODO: form publish message and put on to connection queue
+		// may want to synchronize these methods to protect against bad usages
+		//read idGen with low level, only 1 message type
+		//write con In with high level there are many message types and fields
 	}
 	
 	public void publish(CharSequence topic, int QualityOfService, ByteBuffer payload) {
-		//TODO: needs implementation
+		//TODO: form publish message and put on to connection queue
+		// may want to synchronize these methods to protect against bad usages
+		//read idGen with low level, only 1 message type
+		//write con In with high level there are many message types and fields
 	}
 	
 	public void publish(CharSequence topic, int QualityOfService, byte[] payload, int payloadOffset, int payloadLength) {
-		//TODO: needs implementation
+		//TODO: form publish message and put on to connection queue
+		// may want to synchronize these methods to protect against bad usages
+		//read idGen with low level, only 1 message type
+		//write con In with high level there are many message types and fields
 	}
 	
-//    public void addPublishAckListener(Object someListener) {
-//    	//   Called on PubRec and PubAck passes ID
-//    	//TODO: needs implementation
-//    }
-//    
-//    public void addSubcriptionListener(CharSequence topic, int QualityOfService, Object someListener) {
-//    	
-//    	//TODO: needs implementation
-//    	
-//    }
+
 
 }

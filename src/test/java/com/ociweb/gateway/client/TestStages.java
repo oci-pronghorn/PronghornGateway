@@ -97,10 +97,11 @@ public class TestStages {
 	}
 	
 	
-	//TODO: each test must start at known clean state an not go far from there to ensure repro-script is very short.
+
 	
 	@SuppressWarnings("unused")
 	private void testSingleStage(Class targetStage, RingBufferConfig[] inputConfigs, RingBufferConfig[] outputConfigs) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
+		//TODO: each test must start at known clean state an not go far from there to ensure repro-script is very short.
 		long testDuration = 500; //keep short for now to save limited time on build server
 
 		//TODO: this conditional will be removed once we have general solutions for all the stages.

@@ -1,5 +1,7 @@
 package com.ociweb.gateway.common;
 
+import org.junit.Assert;
+
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
@@ -21,13 +23,15 @@ public class ExpectedUseValidationStage extends PronghornStage{
 	}
 
 	@Override
-	public void run() {		
-		if (!validator.validate(graphManager, inputs, outputs)) {
+	public void run() {
+		Object failureDetails = validator.validate(graphManager, inputs, outputs); 
+		if (null!=failureDetails) {
 			foundError = true;
 			//force hard shut down of stage under test and generator
 			GraphManager.terminateInputStages(graphManager);
 			//force hard shut down of this stage
-			GraphManager.setStateToShutdown(graphManager, stageId);
+			GraphManager.setStateToShutdown(graphManager, stageId);		
+			Assert.fail("Validation Failure: "+failureDetails);
 		}
 	}
 	

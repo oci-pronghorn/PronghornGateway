@@ -5,7 +5,7 @@ import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
 public interface GVSValidator {
 
-	boolean validate(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs);
+	TestFailureDetails validate(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs);
 
 	String status();
 

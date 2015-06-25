@@ -94,6 +94,12 @@ public class IdGenStage extends PronghornStage {
 				RingBuffer.confirmLowLevelWrite(outputRing, sizeOfFragment);
 			}
 		}
+		
+//		j = 0;
+//		while (j<totalRanges) {
+//			log.warn(j+"   "+rangeToString(consumedRanges[j]));
+//			j++;
+//		}
 	}
 	
 	//TODO: this is a problem because it creates garbage when not logging
@@ -111,42 +117,48 @@ public class IdGenStage extends PronghornStage {
 	public void releaseRange(int range) {
 		
 		int insertAt = findIndex(consumedRanges, 0, totalRanges, range);		
-		
-		
-		//TODO: AAAAAA, rlease can split a row and need to make a new one.
-		
-		if ((0xFFFF&range) != (0xFFFF&consumedRanges[insertAt]) && totalRanges>0 && insertAt<totalRanges) {
-			log.warn("**************** FEATURE NOT YET IMPLEMENTED");
-			
-			int j = 0;
-			while (j<totalRanges) {
-				log.warn(j+"   "+rangeToString(consumedRanges[j]));
-				j++;
-			}
-		    log.warn("insert at "+insertAt+" value "+rangeToString(range));
-			
-			System.exit(-1);
-		}
-		
-		
-		
+				
 		if (range != consumedRanges[insertAt]) {
-
+			int releaseEnd = 0xFFFF&(range>>16);
+			int releaseBegin = 0xFFFF&range;
 			debug("IdGen release range {}",range);
 			
-			//this number comes before that value at this position
-			//must erase up to end however for bad messages end may be before start.
-			//if end is greater than end must continue and delete block
-			int releaseEnd = 0xFFFF&(range>>16);
+			// if begin is < last cosumedRange end then its in the middle of that row need special logic
+			if (insertAt>0) {
+				int lastRangeEnd = 0xFFFF&(consumedRanges[insertAt-1]>>16);
+				if (releaseBegin <  lastRangeEnd  ) {
+					consumedRanges[insertAt-1] = (0xFFFF&consumedRanges[insertAt-1]) | ((0xFFFF&releaseBegin)<<16);
+					
+					if (releaseEnd < lastRangeEnd) {
+						//cuts range in two parts, will need to add row to table
+						int toCopy = totalRanges - insertAt;					
+						System.arraycopy(consumedRanges, insertAt, consumedRanges, insertAt+1, toCopy);						
+						consumedRanges[insertAt] = (0xFFFF&releaseEnd) | (lastRangeEnd<<16);
+						if (++totalRanges>=consumedRanges.length) {
+							log.error("Fragmentation of values is too large of limited storage space of {} ",consumedRanges.length);
+						}						
+						return; // do not continue
+					} else {
+						//end is >= to last end so this is a tail trim to the existing row							
+						if (releaseEnd == lastRangeEnd) {
+							return; //no need to continue
+						}
+					}					
+				}
+			}
+			
+			///
+			
+			//count up how many full rows must be cleared, result is in rows
 			int rows = 0;
 			if (insertAt<totalRanges) {
 				int rowBegin =0;
 				do {
-					rowBegin= 0xFFFF&consumedRanges[++rows+insertAt];				
+					rowBegin = 0xFFFF&consumedRanges[++rows+insertAt];				
 				} while(releaseEnd>rowBegin && (rows+insertAt<totalRanges));
 			}
-			//must delete all rows but the last one may be split
 			
+			//this last row may be split and needs adjustment			
 			int lastRow = rows+insertAt-1;		
 			if (totalRanges>0) {
 				int lastEnd = (0xFFFF&(consumedRanges[lastRow]>>16));
@@ -157,7 +169,7 @@ public class IdGenStage extends PronghornStage {
 				}
 			}
 			
-			//all remaining rows are deleted
+			//all full rows are deleted
 			if (rows>0) {
 				int toCopy = -rows + totalRanges - insertAt;					
 				System.arraycopy(consumedRanges, insertAt+rows, consumedRanges, insertAt, toCopy);			
@@ -181,13 +193,9 @@ public class IdGenStage extends PronghornStage {
 	private int findIndex(int[] consumedRanges, int from, int to, int target) {
 		int i = from;
 		int targetStart = 0xFFFF&target;
+		//while target start is before each range start keep walking
 		while (i<to &&  (0xFFFF&consumedRanges[i])<targetStart) {
 			i++;
-		}
-		if (i>0 && (0xFFFF&consumedRanges[i])>targetStart) {
-			if ((0xFFFF&(consumedRanges[i]>>16) )>targetStart) {
-				return i-1;
-			}
 		}
 		return i;
 	}
@@ -198,13 +206,20 @@ public class IdGenStage extends PronghornStage {
 	 * @return
 	 */
 	private int reserveNewRange() {
-		//all ranges are kept in order 
+		//if there are no selected ranges then just add the first one
+		if (0 == totalRanges) {
+			totalRanges = 1;
+			return consumedRanges[0]= 0 | ((MAX_BLOCK_SIZE)<<16);
+		}
 		
+		//if have existing ranges so append onto the end of one of the existing ones.
+		
+		//all ranges are kept in order 		
 		int max = 0;
 		int maxStart = 0;
 		int idx = 0;
 		
-		//walk list of all reserved ranges and find the biggest gap between them
+		//walk list of all reserved ranges and find the biggest found after each
 		int lastBegin = 65534; //need room to use 65535 as the exclude end
 		int i = totalRanges;
 		while (--i>=0) {
@@ -218,49 +233,33 @@ public class IdGenStage extends PronghornStage {
 				max = len;
 				maxStart = end;
 				idx=i+1;
-				if (max>=MAX_BLOCK_SIZE) {
+				if (max >= MAX_BLOCK_SIZE) {
      				return reserveRange(maxStart, idx, MAX_BLOCK_SIZE);
 				}
-			}
-			
+			}			
 			lastBegin = begin;
 		}
-
-		//last range that starts at 0 and goes up to first reserved range
-		int len = lastBegin-0;
-		if (len>max) {
-			//TODO: these are supposted to be in unsigned order however if high bit gets set its a negative!!
-			//System.err.println("last len:"+ Arrays.toString(consumedRanges));
-			
-			max = len;
-			maxStart = 0;
-			idx=0;
-		}
+		
 		//check that we have not run out of values
 		if (0==max || totalRanges==consumedRanges.length) {
 			//return stop code
 			return STOP_CODE;//try again after some ranges are released
 		}		
 		
-		//we now know where the largest range is and where it starts.
-		
-		int rangeCount = Math.min(max, MAX_BLOCK_SIZE);
-		return reserveRange(maxStart, idx, rangeCount);
+		//we now know where the largest range is and where it starts.		
+		return reserveRange(maxStart, idx, Math.min(max, MAX_BLOCK_SIZE));
 	}
 
-	private int reserveRange(int maxStart, int idx, int rangeCount) {
-		int newReservation = maxStart | ((maxStart+rangeCount)<<16);
-
+	private int reserveRange(int rangeStart, int idx, int rangeCount) {
+		assert(idx>0);
+		//appends on to previous internal row
+		consumedRanges[idx-1]= (consumedRanges[idx-1]&0xFFFF) | ((rangeStart+rangeCount)<<16);
+		
+		//send back value that is just the new range
+		int newReservation = rangeStart | ((rangeStart+rangeCount)<<16);
 		debug("IdGen reserve range {}",newReservation);
+		return newReservation;
 		
-		
-		//insert new reservation
-		if (idx<totalRanges) {
-			System.arraycopy(consumedRanges, idx, consumedRanges, idx+1, totalRanges-idx);
-		}		
-		totalRanges++;
-		return consumedRanges[idx]=newReservation;
-	}
-	
+	}	
 
 }
