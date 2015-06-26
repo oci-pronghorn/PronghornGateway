@@ -60,7 +60,7 @@ public class TestStages {
 	
 	
 	@Test
-	public void testStages() throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
+	public void testStagesExpectedUseCase() throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
 		GraphManager gm = new GraphManager();		
 		ClientAPIFactory.clientAPI(gm);
 		
@@ -88,7 +88,44 @@ public class TestStages {
 					}
 									
 					//build test instances,are different instances than ones found in the graph.
-					testSingleStage(stage.getClass(),inputConfigs,outputConfigs);
+					testSingleStageExpectedUseCase(stage.getClass(),inputConfigs,outputConfigs);
+									
+				}
+			}
+		}
+		
+	}
+	
+	@Test
+	public void testStagesFuzz() throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
+		GraphManager gm = new GraphManager();		
+		ClientAPIFactory.clientAPI(gm);
+		
+		//we do not know which id will be given to which stage so walk them all and do the right test for each
+		int stageId = PronghornStage.totalStages();
+		while (--stageId>=0) {			
+			PronghornStage stage = GraphManager.getStage(gm, stageId);
+			if (null!=stage) {
+				//filter out any stages dedicated to monitoring
+				if (null ==	GraphManager.getAnnotation(gm, stage, GraphManager.MONITOR, null)) {
+
+					int inputs = GraphManager.getInputPipeCount(gm, stage);
+					//need array of RingBufferConfig objects.
+					RingBufferConfig[] inputConfigs = new RingBufferConfig[inputs];
+					int i = inputs;
+					while (--i>=0) {
+						inputConfigs[i]=GraphManager.getInputPipe(gm, stage, i).config();
+					}
+					
+					int outputs = GraphManager.getOutputPipeCount(gm, stage.stageId);
+					RingBufferConfig[] outputConfigs = new RingBufferConfig[outputs];
+					i = outputs;
+					while (--i>=0) {
+						outputConfigs[i]=GraphManager.getOutputPipe(gm, stage, i).config();
+					}
+									
+					//build test instances,are different instances than ones found in the graph.
+					testSingleStageFuzz(stage.getClass(),inputConfigs,outputConfigs);
 									
 				}
 			}
@@ -97,10 +134,7 @@ public class TestStages {
 	}
 	
 	
-
-	
-	@SuppressWarnings("unused")
-	private void testSingleStage(Class targetStage, RingBufferConfig[] inputConfigs, RingBufferConfig[] outputConfigs) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
+	private void testSingleStageExpectedUseCase(Class targetStage, RingBufferConfig[] inputConfigs, RingBufferConfig[] outputConfigs) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
 		//TODO: each test must start at known clean state an not go far from there to ensure repro-script is very short.
 		long testDuration = 500; //keep short for now to save limited time on build server
 
@@ -116,12 +150,28 @@ public class TestStages {
 						
 			runExpectedUseTest(targetStage, inputConfigs, outputConfigs, testDuration, validator, generator, random);	
 			
-			//Disabled until finished,   TODO: Needs dumper to check actual output.
-			//runFuzzTest(targetStage, inputConfigs, outputConfigs, testDuration, random);
 		}
 		
 	}
 
+	private void testSingleStageFuzz(Class targetStage, RingBufferConfig[] inputConfigs, RingBufferConfig[] outputConfigs) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
+		//TODO: each test must start at known clean state an not go far from there to ensure repro-script is very short.
+		long testDuration = 500; //keep short for now to save limited time on build server
+
+		//TODO: this conditional will be removed once we have general solutions for all the stages.
+		if (IdGenStage.class == targetStage) {
+			
+			GVSValidator validator = IdGenStageBehavior.validator();
+			GGSGenerator generator = IdGenStageBehavior.generator(testDuration);
+
+			//to randomize from seed
+			int generatorSeed = 42;
+			Random random = new Random(generatorSeed);
+		
+			runFuzzTest(targetStage, inputConfigs, outputConfigs, testDuration, random);
+		}
+		
+	}
 
 	private void runFuzzTest(Class targetStage, RingBufferConfig[] inputConfigs, RingBufferConfig[] outputConfigs, long testDuration, Random random) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
 		log.info("begin 'fuzz' testing {}",targetStage);

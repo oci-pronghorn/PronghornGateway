@@ -1,5 +1,8 @@
 package com.ociweb.gateway.common;
 
+import java.nio.ByteBuffer;
+
+import com.ociweb.pronghorn.ring.FieldReferenceOffsetManager;
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.ring.stream.StreamingReadVisitor;
 import com.ociweb.pronghorn.ring.stream.StreamingReadVisitorToJSON;
@@ -16,10 +19,104 @@ public class FuzzValidationStage extends PronghornStage{
 	public FuzzValidationStage(GraphManager graphManager, RingBuffer input) {
 		super(graphManager, input, NONE);
 
-		StreamingReadVisitor visitor = new StreamingReadVisitorToJSON(System.out);
+		StreamingReadVisitor visitor = buildVisitor(RingBuffer.from(input));
 		
         reader = new StreamingVisitorReader(input, visitor);//, new StreamingReadVisitorDebugDelegate(visitor) );
 		
+	}
+
+	private StreamingReadVisitor buildVisitor(FieldReferenceOffsetManager from) {
+		return new StreamingReadVisitor() {
+
+			@Override
+			public boolean paused() {
+				return false;
+			}
+
+			//TODO: B, for each field type need to confirm them against the expected ranges & behavior in from
+			
+			@Override
+			public void visitTemplateOpen(String name, long id) {				
+			}
+
+			@Override
+			public void visitTemplateClose(String name, long id) {				
+			}
+
+			@Override
+			public void visitFragmentOpen(String name, long id, int cursor) {
+			}
+
+			@Override
+			public void visitFragmentClose(String name, long id) {
+			}
+
+			@Override
+			public void visitSequenceOpen(String name, long id, int length) {
+			}
+
+			@Override
+			public void visitSequenceClose(String name, long id) {
+			}
+
+			@Override
+			public void visitSignedInteger(String name, long id, int value) {
+			}
+
+			@Override
+			public void visitUnsignedInteger(String name, long id, long value) {
+			}
+
+			@Override
+			public void visitSignedLong(String name, long id, long value) {
+			}
+
+			@Override
+			public void visitUnsignedLong(String name, long id, long value) {
+				// TODO Auto-generated method stub
+				
+			}
+
+			@Override
+			public void visitDecimal(String name, long id, int exp, long mant) {
+			}
+
+			@Override
+			public Appendable targetASCII(String name, long id) {
+				return null;
+			}
+
+			@Override
+			public void visitASCII(String name, long id, Appendable value) {
+			}
+
+			@Override
+			public Appendable targetUTF8(String name, long id) {
+				return null;
+			}
+
+			@Override
+			public void visitUTF8(String name, long id, Appendable target) {
+			}
+
+			@Override
+			public ByteBuffer targetBytes(String name, long id, int length) {
+				return null;
+			}
+
+			@Override
+			public void visitBytes(String name, long id, ByteBuffer value) {
+			}
+
+			@Override
+			public void startup() {
+			}
+
+			@Override
+			public void shutdown() {
+			}
+			
+		};
 	}
 
     @Override

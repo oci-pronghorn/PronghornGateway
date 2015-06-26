@@ -23,9 +23,9 @@ public class IdGenStage extends PronghornStage {
 
 	private static final Logger log = LoggerFactory.getLogger(IdGenStage.class);
 	
-	public static final int MAX_BLOCK_SIZE = 1024;
-	
-	private static final int MAX_CONSUMED_BLOCKS = 2+((1<<16)/MAX_BLOCK_SIZE);
+	public static final int MAX_BLOCK_SIZE = 2048;	
+	private static final int MAX_CONSUMED_BLOCKS = 128;
+	private static final int MAX_CONSUMED_BLOCKS_LIMIT = MAX_CONSUMED_BLOCKS-1;
 	private static final int STOP_CODE = 0xFFFFFFFF;
 	
 	private int[] consumedRanges;
@@ -66,11 +66,15 @@ public class IdGenStage extends PronghornStage {
 		int i = inputs.length;
 		while (--i>=0) {
 			RingBuffer inputRing = inputs[i];
-			while (contentToLowLevelRead(inputRing, sizeOfFragment)) {
+			while (contentToLowLevelRead(inputRing, sizeOfFragment) && 
+				   totalRanges<MAX_CONSUMED_BLOCKS_LIMIT) // only release blocks if we have room, just in case one splits, back-pressure 
+			{
 				int msgIdx = RingBuffer.takeMsgIdx(inputRing);
 				assert(theOneMsg == msgIdx);
 				
 				releaseRange(RingBuffer.takeValue(inputRing));
+				
+				//TODO: do we send the reset request here or earler or later?
 				
 				RingBuffer.releaseReads(inputRing);
 				RingBuffer.confirmLowLevelRead(inputRing, sizeOfFragment);
@@ -94,12 +98,7 @@ public class IdGenStage extends PronghornStage {
 				RingBuffer.confirmLowLevelWrite(outputRing, sizeOfFragment);
 			}
 		}
-		
-//		j = 0;
-//		while (j<totalRanges) {
-//			log.warn(j+"   "+rangeToString(consumedRanges[j]));
-//			j++;
-//		}
+	
 	}
 	
 	//TODO: this is a problem because it creates garbage when not logging
@@ -127,18 +126,19 @@ public class IdGenStage extends PronghornStage {
 			if (insertAt>0) {
 				int lastRangeEnd = 0xFFFF&(consumedRanges[insertAt-1]>>16);
 				if (releaseBegin <  lastRangeEnd  ) {
-					consumedRanges[insertAt-1] = (0xFFFF&consumedRanges[insertAt-1]) | ((0xFFFF&releaseBegin)<<16);
-					
+													
 					if (releaseEnd < lastRangeEnd) {
+						
 						//cuts range in two parts, will need to add row to table
+						consumedRanges[insertAt-1] = (0xFFFF&consumedRanges[insertAt-1]) | ((0xFFFF&releaseBegin)<<16);
 						int toCopy = totalRanges - insertAt;					
 						System.arraycopy(consumedRanges, insertAt, consumedRanges, insertAt+1, toCopy);						
 						consumedRanges[insertAt] = (0xFFFF&releaseEnd) | (lastRangeEnd<<16);
-						if (++totalRanges>=consumedRanges.length) {
-							log.error("Fragmentation of values is too large of limited storage space of {} ",consumedRanges.length);
-						}						
+						totalRanges++;
 						return; // do not continue
+
 					} else {
+						consumedRanges[insertAt-1] = (0xFFFF&consumedRanges[insertAt-1]) | ((0xFFFF&releaseBegin)<<16);
 						//end is >= to last end so this is a tail trim to the existing row							
 						if (releaseEnd == lastRangeEnd) {
 							return; //no need to continue
@@ -185,7 +185,7 @@ public class IdGenStage extends PronghornStage {
 				System.arraycopy(consumedRanges, insertAt+1, consumedRanges, insertAt, toCopy);		
 			}
 			totalRanges--;
-		}	
+		}
 	}
  	
 	
@@ -253,7 +253,16 @@ public class IdGenStage extends PronghornStage {
 	private int reserveRange(int rangeStart, int idx, int rangeCount) {
 		assert(idx>0);
 		//appends on to previous internal row
-		consumedRanges[idx-1]= (consumedRanges[idx-1]&0xFFFF) | ((rangeStart+rangeCount)<<16);
+		
+		int rangeEnd = rangeStart+rangeCount;
+	    if (idx<totalRanges && (consumedRanges[idx]&0xFFFF)==rangeEnd) {
+	    	//combine these two because reservation connects them together	    	
+	    	rangeEnd = (consumedRanges[idx]>>16)&0xFFFF;
+	    	System.arraycopy(consumedRanges, idx+1, consumedRanges, idx, totalRanges-idx);
+	    	totalRanges--;
+	    }
+		
+		consumedRanges[idx-1]= (consumedRanges[idx-1]&0xFFFF) | (rangeEnd<<16);
 		
 		//send back value that is just the new range
 		int newReservation = rangeStart | ((rangeStart+rangeCount)<<16);
