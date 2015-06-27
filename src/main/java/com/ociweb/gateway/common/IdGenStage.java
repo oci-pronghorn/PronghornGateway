@@ -23,7 +23,7 @@ public class IdGenStage extends PronghornStage {
 
 	private static final Logger log = LoggerFactory.getLogger(IdGenStage.class);
 	
-	public static final int MAX_BLOCK_SIZE = 2048;	
+	public static final int MAX_BLOCK_SIZE = 4096;
 	private static final int MAX_CONSUMED_BLOCKS = 128;
 	private static final int MAX_CONSUMED_BLOCKS_LIMIT = MAX_CONSUMED_BLOCKS-1;
 	private static final int STOP_CODE = 0xFFFFFFFF;
@@ -90,7 +90,7 @@ public class IdGenStage extends PronghornStage {
 				int range = reserveNewRange();
 				if (STOP_CODE == range || 0==range) {
 					return;//no more values to give out
-				}
+				} 
 				
 				addMsgIdx(outputRing, theOneMsg);	
 				RingBuffer.addIntValue(range, outputRing);
@@ -113,13 +113,21 @@ public class IdGenStage extends PronghornStage {
 		}
 	}
 	
-	public void releaseRange(int range) {
+	public void releaseRange(final int range) {
 		
 		int insertAt = findIndex(consumedRanges, 0, totalRanges, range);		
 				
 		if (range != consumedRanges[insertAt]) {
 			int releaseEnd = 0xFFFF&(range>>16);
 			int releaseBegin = 0xFFFF&range;
+			if (releaseBegin>=releaseEnd) {
+				//this is an invalid message and treated as a no-op
+				//this must always be done to support generative testing
+				//TODO: B, if desired this can be logged
+				log.debug("skipped release for {}",rangeToString(range));
+				return;
+			}
+			
 			debug("IdGen release range {}",range);
 			
 			// if begin is < last cosumedRange end then its in the middle of that row need special logic
@@ -132,15 +140,18 @@ public class IdGenStage extends PronghornStage {
 						//cuts range in two parts, will need to add row to table
 						consumedRanges[insertAt-1] = (0xFFFF&consumedRanges[insertAt-1]) | ((0xFFFF&releaseBegin)<<16);
 						int toCopy = totalRanges - insertAt;					
-						System.arraycopy(consumedRanges, insertAt, consumedRanges, insertAt+1, toCopy);						
-						consumedRanges[insertAt] = (0xFFFF&releaseEnd) | (lastRangeEnd<<16);
+						System.arraycopy(consumedRanges, insertAt, consumedRanges, insertAt+1, toCopy);	
+						//subtract one from release end because that value is exclusive of release
+						consumedRanges[insertAt] = (0xFFFF&(releaseEnd-1)) | (lastRangeEnd<<16);
 						totalRanges++;
+						assert(validateInternalTable()) : "Added at "+insertAt + " from release "+rangeToString(range);
 						return; // do not continue
 
 					} else {
 						consumedRanges[insertAt-1] = (0xFFFF&consumedRanges[insertAt-1]) | ((0xFFFF&releaseBegin)<<16);
 						//end is >= to last end so this is a tail trim to the existing row							
 						if (releaseEnd == lastRangeEnd) {
+							assert(validateInternalTable());
 							return; //no need to continue
 						}
 					}					
@@ -161,16 +172,23 @@ public class IdGenStage extends PronghornStage {
 			//this last row may be split and needs adjustment			
 			int lastRow = rows+insertAt-1;		
 			if (totalRanges>0) {
+				//assert(releaseEnd>(consumedRanges[lastRow]&0xFFFF)); //TODO: B, do we need this assert?
 				int lastEnd = (0xFFFF&(consumedRanges[lastRow]>>16));
 				if (releaseEnd<lastEnd) {
 					//this is a partial row so modify rather than clear
 					consumedRanges[lastRow] = (0xFFFF&releaseEnd) | (lastEnd<<16);
 					rows--;//this row is done
+				} else {
+					//releaseEnd is > this row end
+					//confirm its < next row begin
+					assert(lastRow+1>=totalRanges || releaseEnd<=(consumedRanges[lastRow+1]&0xFFFF));
+										
 				}
 			}
 			
 			//all full rows are deleted
 			if (rows>0) {
+				assert(isInRange(insertAt, rows, releaseBegin, releaseEnd));
 				int toCopy = -rows + totalRanges - insertAt;					
 				System.arraycopy(consumedRanges, insertAt+rows, consumedRanges, insertAt, toCopy);			
 				totalRanges-=rows;
@@ -186,10 +204,30 @@ public class IdGenStage extends PronghornStage {
 			}
 			totalRanges--;
 		}
+		assert(validateInternalTable());
 	}
  	
 	
 	
+	private boolean isInRange(int insertAt, int rows, int releaseBegin, int releaseEnd) {
+		int i = rows;
+		while (--i>=0) {
+			int range = consumedRanges[insertAt+i];
+			int begin = range&0xFFFF;
+			int end = (range>>16)&0xFFFF;
+			if (begin<releaseBegin || end<releaseBegin) {
+				return false;
+			}
+			if (end>releaseEnd || begin> releaseEnd) {
+				return false;
+			}
+		}
+		
+		
+		// TODO Auto-generated method stub
+		return true;
+	}
+
 	private int findIndex(int[] consumedRanges, int from, int to, int target) {
 		int i = from;
 		int targetStart = 0xFFFF&target;
@@ -241,13 +279,19 @@ public class IdGenStage extends PronghornStage {
 		}
 		
 		//check that we have not run out of values
-		if (0==max || totalRanges==consumedRanges.length) {
-			//return stop code
+		if (0==max) {//return stop code
 			return STOP_CODE;//try again after some ranges are released
 		}		
 		
 		//we now know where the largest range is and where it starts.		
 		return reserveRange(maxStart, idx, Math.min(max, MAX_BLOCK_SIZE));
+	}
+
+	private void dumpInternalTable() {
+		int j = totalRanges;
+		while (--j>=0) {
+			System.err.println(j+" reserved "+rangeToString(consumedRanges[j]));
+		}
 	}
 
 	private int reserveRange(int rangeStart, int idx, int rangeCount) {
@@ -267,8 +311,25 @@ public class IdGenStage extends PronghornStage {
 		//send back value that is just the new range
 		int newReservation = rangeStart | ((rangeStart+rangeCount)<<16);
 		debug("IdGen reserve range {}",newReservation);
+				
+		assert(validateInternalTable());
 		return newReservation;
 		
+	}
+
+	private boolean validateInternalTable() {
+		int last = 65536;
+		int j = totalRanges;
+		while (--j>=0) {
+			int start = 0xFFFF&consumedRanges[j];
+			if (start>last) {
+				dumpInternalTable();				
+				return false;
+			} else {
+				last = start;
+			}			
+		}
+		return true;
 	}	
 
 }

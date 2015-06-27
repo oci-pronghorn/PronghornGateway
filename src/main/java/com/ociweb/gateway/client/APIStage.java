@@ -12,12 +12,22 @@ public class APIStage extends PronghornStage {
 	private final RingBuffer idGenIn; //used by same external thread
 	private final RingBuffer fromConnection;
 	 	
+
+	private final ConOutConst conOutConst;
+	private final ConInConst conInConst;
+
+  	
 	protected APIStage(GraphManager graphManager, RingBuffer idGenIn, RingBuffer conIn, RingBuffer conOut) {
 		super(graphManager, new RingBuffer[]{idGenIn,conIn}, conOut);
 	
 		this.idGenIn = idGenIn;
 		this.toConnection = conIn;
 		this.fromConnection = conOut;
+		
+        this.conOutConst = new ConOutConst(RingBuffer.from(toConnection));
+        this.conInConst = new ConInConst(RingBuffer.from(fromConnection)); 		
+        		      
+	  	
 	}
 	
 	
@@ -32,7 +42,6 @@ public class APIStage extends PronghornStage {
 		//upon qos 2 ack will need to send response to connection
         // do we need a second queue for this ack and another for the new requests, yes to avoid lock.
 		
-
 	}
 
 	//  public void addPublishAckListener(Object someListener) {
@@ -48,6 +57,9 @@ public class APIStage extends PronghornStage {
 	
 	
 	public void connect(CharSequence url, boolean someFlags) {
+		
+	    
+		
 		//TODO:  form connect message and put it on the toConnectionQueue
 		// may want to synchronize these methods to protect against bad usages
 		

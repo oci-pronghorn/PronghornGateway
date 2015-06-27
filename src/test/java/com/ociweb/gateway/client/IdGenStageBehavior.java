@@ -32,6 +32,7 @@ public class IdGenStageBehavior{
 	public static GGSGenerator generator(final long testDuration) {
 		return new GGSGenerator() {
 			
+			private static final int ABS_MAX_INFLIGHT_TESTED = 12;//1000;//TODO: B, MOVE UP TO 64k
 			private final int length = 1<<16;
 			private final int mask = length-1;
 			
@@ -48,19 +49,24 @@ public class IdGenStageBehavior{
 				
 
 				//mix up the ranges to simulate late returning values in fllight
-				int maxMix = 0;//70; //max in flight
+				int maxMix = random.nextInt(ABS_MAX_INFLIGHT_TESTED);//max in flight
 				int oneFailureIn = 10000; //NOTE: as this ratio gets worse the speed drops off
 				//NOTE: this does not test any "lost" ids, TODO: C, this would be a good test to add later.
 				
 				long mixStart = Math.max(tail, head-maxMix);
 				long k = head-mixStart;
 				//do the shuffle.
-				while (--k>=1) {
+				while (--k>1) {
 					if (0==random.nextInt(oneFailureIn)) {
+						assert(head-k>=tail);
+						assert(head-(k-1)>=tail);
+						assert(head-k<head);
+						assert(head-(k-1)<head);
 						//mix forward to values can move a long way
 						int temp = values[mask&(int)(head-(k-1))];
 						values[mask&(int)(head-(k-1))] = values[mask&(int)(head-k)];
 						values[mask&(int)(head-k)] = temp;
+						
 					}					
 				}
 									
@@ -98,8 +104,7 @@ public class IdGenStageBehavior{
 					publishWrites(outputRing);
 					RingBuffer.confirmLowLevelWrite(outputRing, sizeOfFragment);
 				}
-				
-				
+								
 				
 				//get new ranges
 				int i = inputs.length;
@@ -175,19 +180,19 @@ public class IdGenStageBehavior{
 								return new TestFailureDetails("Corrupt Feed");
 							};
 	
-							int range = RingBuffer.takeValue(inputs[expected]);
+							final int range = RingBuffer.takeValue(inputs[expected]);
 	
 							
 							
-							int idx = range & 0xFFFF; // TODO: helper method to get
+							final int start = range & 0xFFFF; // TODO: helper method to get
 												      // the shorts would be nice
 													  // here
-							int limit = (range >> 16) & 0xFFFF;
+							final int limit = (range >> 16) & 0xFFFF;
 							
 							debug("Validation "+label[expected]+" to "+label[toggle]+" range {} ",range);
 							
 							
-							int count = limit-idx;
+							int count = limit-start;
 							if (count<1) {
 								System.err.println(label[expected]+" message must contain at least 1 value in the range, found "+count+" in value "+Integer.toHexString(range));
 								
@@ -198,6 +203,7 @@ public class IdGenStageBehavior{
 							// test for the expected values
 							int failureIdx = -1;
 							boolean exit = false;
+							int idx = start;
 							while (idx < limit) {
 								if (expected != testSpace[idx]) {
 									if (failureIdx < 0) {
@@ -206,7 +212,7 @@ public class IdGenStageBehavior{
 									}								
 								} else {
 									if (failureIdx>=0) {								
-										System.err.println("Validator found "+label[expected]+" toggle error at "+failureIdx+" up to "+idx+" expected "+expected+" released up to "+limit);
+										System.err.println("Validator found "+label[expected]+" produced toggle error at "+failureIdx+" up to "+idx+" expected "+expected+" released up to "+limit);
 										failureIdx = -1;
 									}								
 								}
@@ -214,20 +220,13 @@ public class IdGenStageBehavior{
 								testSpace[idx++] = toggle;
 							}
 							if (failureIdx>=0) {								
-								System.err.println("Validator found "+label[expected]+" toggle error at "+failureIdx+" up to "+limit+" expected "+expected);
+								System.err.println("Validator found "+label[expected]+" produced toggle error at "+failureIdx+" up to "+limit+" expected "+expected);
 								
 							    exit = true;
 							}
 							if (exit) {
 								
-								//Thinking:
-								///   if validate from Tested does not match expected state then...
-								//      Tested sent bad range or internal map is wrong
-								//      Internal map can not be wrong because it matches the data passed thru from the generator and previously checked
-								// SO... the new range from either tested or generated is always suspect for the error.
-								
-								//TODO: TestFailureDetails must take the needed seeds to repo the problem, this will not work however until deterministic scheduler is complete.
-								return new TestFailureDetails("Bad Match");
+								return new TestFailureDetails("Bad Match on input range "+IdGenStage.rangeToString(range));
 								
 							}
 							

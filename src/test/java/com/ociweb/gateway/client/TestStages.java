@@ -101,6 +101,9 @@ public class TestStages {
 		GraphManager gm = new GraphManager();		
 		ClientAPIFactory.clientAPI(gm);
 		
+		//  
+		
+		
 		//we do not know which id will be given to which stage so walk them all and do the right test for each
 		int stageId = PronghornStage.totalStages();
 		while (--stageId>=0) {			
@@ -183,7 +186,7 @@ public class TestStages {
 		
 		int i = inputRings.length;
 		while (--i>=0) {
-			new FuzzGeneratorStage(gm, random, testDuration, inputRings[i]);
+			GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, new FuzzGeneratorStage(gm, random, testDuration, inputRings[i]));
 		}
 		
 		//TODO: test must check for hang, needs special scheduler that tracks time and reports longest active actor
@@ -196,7 +199,7 @@ public class TestStages {
 			valdiators[j] = new FuzzValidationStage(gm, outputRings[j]);
 			
 		}
-		
+			
 		//TODO: once complete determine how we will do this with multiple queues.
 		Constructor constructor = targetStage.getConstructor(gm.getClass(), inputRings.getClass(), outputRings.getClass());
 				
@@ -214,13 +217,13 @@ public class TestStages {
 						
 		boolean cleanTerminate = scheduler.awaitTermination(testDuration+SHUTDOWN_WINDOW, TimeUnit.MILLISECONDS);
 		
-		boolean noError = false;
+		boolean foundError = false;
 		j = valdiators.length;
 		while (--j>=0) {
-			noError |= valdiators[j].foundError();
+			foundError |= valdiators[j].foundError();
 		}
 		
-		if (!cleanTerminate || !noError) {
+		if (!cleanTerminate || foundError) {
 			for (RingBuffer ring: outputRings) {
 				log.info("{}->Valdate {}",targetStage,ring);
 			}
@@ -266,7 +269,8 @@ public class TestStages {
 								
 		//validation shuts down when the producers on both end have already shut down.
 		ExpectedUseValidationStage valdiationStage = new ExpectedUseValidationStage(gm, validationInputs, validationOutputs, validator);
-
+		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER,valdiationStage);//because of the odd loop this is in this had to be done, TODO: C, revisit if this is a good idea.
+		
 		//generator is always a producer and must be marked as such.			
 		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER,
 				                  new ExpectedUseGeneratorStage(gm, generatorInputs, generatorOutputs, random, generator));
