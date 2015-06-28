@@ -5,3 +5,9 @@ MQTT Client and Broker
 
 This project is under active development.
 Please consider getting involved and sponsoring the completion of [PronghornGateway](mailto:info@ociweb.com;?subject=Pronghorn%20Sponsor%20Inquiry)
+
+
+#2015 Target Schedule:
+
+* September - Client publisher/subscriber jar
+* December  - Broker executable jar

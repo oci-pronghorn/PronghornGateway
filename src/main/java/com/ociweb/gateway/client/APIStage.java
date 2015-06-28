@@ -3,93 +3,198 @@ package com.ociweb.gateway.client;
 import java.nio.ByteBuffer;
 
 import com.ociweb.pronghorn.ring.RingBuffer;
+import com.ociweb.pronghorn.ring.RingReader;
+import com.ociweb.pronghorn.ring.RingWriter;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
 public class APIStage extends PronghornStage {
 
-	private final RingBuffer toConnection; //directly populated by external method calls, eg unknown thread
+	private final RingBuffer fromCon; //directly populated by external method calls, eg unknown thread
 	private final RingBuffer idGenIn; //used by same external thread
-	private final RingBuffer fromConnection;
+	private final RingBuffer toCon;
 	 	
+	private final ConOutConst fromConnectionConst;
+	private final ConInConst toConnectionConst;
 
-	private final ConOutConst conOutConst;
-	private final ConInConst conInConst;
-
-  	
-	protected APIStage(GraphManager graphManager, RingBuffer idGenIn, RingBuffer conIn, RingBuffer conOut) {
-		super(graphManager, new RingBuffer[]{idGenIn,conIn}, conOut);
+	private int packetId = -1;
+	private int packetIdLimit = -1;
+	
+  	/**
+  	 * This first implementation is kept simple until we get a working project.
+  	 * 
+  	 * The API may need some adjustments based on use cases.
+  	 * 
+  	 */
+	
+	private final int sizeOfPacketIdFragment;
+	private static final int theOneMsg = 0;// there is only 1 message supported by this stage
+	
+	
+	protected APIStage(GraphManager graphManager, RingBuffer idGenIn, RingBuffer fromC, RingBuffer toC) {
+		super(graphManager, new RingBuffer[]{idGenIn,fromC}, toC);
 	
 		this.idGenIn = idGenIn;
-		this.toConnection = conIn;
-		this.fromConnection = conOut;
+		this.fromCon = fromC;
+		this.toCon = toC;
 		
-        this.conOutConst = new ConOutConst(RingBuffer.from(toConnection));
-        this.conInConst = new ConInConst(RingBuffer.from(fromConnection)); 		
-        		      
+        this.fromConnectionConst = new ConOutConst(RingBuffer.from(fromCon));
+        this.toConnectionConst = new ConInConst(RingBuffer.from(toCon)); 		  
 	  	
+        this.sizeOfPacketIdFragment = RingBuffer.from(idGenIn).fragDataSize[theOneMsg];
+        
 	}
 	
 	
 
 	@Override
 	public void run() {
-		// TODO read input queues and notify listeners of new data.
-		//what if listeners block?
 		
-		//read cont out with high level there are many message types and fields
-		
-		//upon qos 2 ack will need to send response to connection
-        // do we need a second queue for this ack and another for the new requests, yes to avoid lock.
+		//loop is for subscribers?
+		while (RingReader.tryReadFragment(fromCon)) {			
+			RingReader.releaseReadLock(fromCon);			
+		}
 		
 	}
 
-	//  public void addPublishAckListener(Object someListener) {
-	//	//   Called on PubRec and PubAck passes ID
-	//	//TODO: needs implementation
-	//}
-	//
-	//public void addSubcriptionListener(CharSequence topic, int QualityOfService, Object someListener) {
-	//	
-	//	//TODO: needs implementation
-	//	
-	//}
 	
-	
-	public void connect(CharSequence url, boolean someFlags) {
-		
-	    
-		
-		//TODO:  form connect message and put it on the toConnectionQueue
-		// may want to synchronize these methods to protect against bad usages
-		
+	public boolean requestConnect(CharSequence url, boolean someFlags) {
+
+		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_CONNECT)) {
+			RingWriter.writeASCII(toCon, toConnectionConst.CON_IN_CONNECT_FIELD_URL, url);
+			
+			ByteBuffer src = null; //TODO: build up message based on spec.
+			int len = 0;
+			RingWriter.writeBytes(toCon, toConnectionConst.CON_IN_CONNECT_FIELD_PACKETDATA, src, len);
+			
+			
+			RingWriter.publishWrites(toCon);
+			return true;
+		} else {
+			return false;
+		}
+
 	}
-	
-	public void disconnect() {
-		//TODO:  form connect message and put it on the toConnectionQueue
-		// may want to synchronize these methods to protect against bad usages
+
+
+
+	public boolean requestDisconnect() {
+		
+		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_DISCONNECT)) {
+			RingWriter.publishWrites(toCon);
+			return true;
+		} else {
+			return false;
+		}		
 				
 	}
+
+
 	
-	public void publish(CharSequence topic, int QualityOfService, CharSequence payload) {
-		//TODO: form publish message and put on to connection queue
-		// may want to synchronize these methods to protect against bad usages
-		//read idGen with low level, only 1 message type
-		//write con In with high level there are many message types and fields
+	public long requestPublish(CharSequence topic, int QualityOfService, CharSequence payload) {
+				
+		if (packetId >= packetIdLimit) {
+			//get next range
+			if (RingBuffer.contentToLowLevelRead(idGenIn, sizeOfPacketIdFragment)) {				
+				loadNextPacketIdRange();				
+			} else {
+				return -1;
+			}	
+		}
+		////
+		
+		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_PUBLISH)) {
+			
+			
+			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_QOS, QualityOfService);
+			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETID, packetId++);
+			
+			ByteBuffer src = null; //TODO: build up message based on spec.
+			int len = 0;
+			RingWriter.writeBytes(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, src, len);
+			
+			RingWriter.publishWrites(toCon);
+		} else {
+			return -1;
+		}
+				
+		return RingBuffer.workingHeadPosition(toCon);
+	}
+
+
+
+	private void loadNextPacketIdRange() {
+		int msgIdx = RingBuffer.takeMsgIdx(idGenIn);
+		assert(theOneMsg == msgIdx);
+		
+		int xx = RingBuffer.takeValue(idGenIn);
+		packetId = 0xFFFF&xx;
+		packetIdLimit = 0xFFFF&(xx>>16); 
+						
+		RingBuffer.releaseReads(idGenIn);
+		RingBuffer.confirmLowLevelRead(idGenIn, sizeOfPacketIdFragment);
 	}
 	
-	public void publish(CharSequence topic, int QualityOfService, ByteBuffer payload) {
-		//TODO: form publish message and put on to connection queue
-		// may want to synchronize these methods to protect against bad usages
-		//read idGen with low level, only 1 message type
-		//write con In with high level there are many message types and fields
+	public long requestReleasedPosition() {
+		return RingBuffer.tailPosition(toCon);
 	}
 	
-	public void publish(CharSequence topic, int QualityOfService, byte[] payload, int payloadOffset, int payloadLength) {
-		//TODO: form publish message and put on to connection queue
-		// may want to synchronize these methods to protect against bad usages
-		//read idGen with low level, only 1 message type
-		//write con In with high level there are many message types and fields
+	public long publish(CharSequence topic, int QualityOfService, ByteBuffer payload) {
+		if (packetId >= packetIdLimit) {
+			//get next range
+			if (RingBuffer.contentToLowLevelRead(idGenIn, sizeOfPacketIdFragment)) {				
+				loadNextPacketIdRange();				
+			} else {
+				return -1;
+			}	
+		}
+		////
+		
+		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_PUBLISH)) {
+			
+			
+			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_QOS, QualityOfService);
+			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETID, packetId++);
+			
+			ByteBuffer src = null; //TODO: build up message based on spec.
+			int len = 0;
+			RingWriter.writeBytes(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, src, len);
+			
+			RingWriter.publishWrites(toCon);
+		} else {
+			return -1;
+		}
+				
+		return RingBuffer.workingHeadPosition(toCon);
+	}
+	
+	public long publish(CharSequence topic, int QualityOfService, byte[] payload, int payloadOffset, int payloadLength) {
+		if (packetId >= packetIdLimit) {
+			//get next range
+			if (RingBuffer.contentToLowLevelRead(idGenIn, sizeOfPacketIdFragment)) {				
+				loadNextPacketIdRange();				
+			} else {
+				return -1;
+			}	
+		}
+		////
+		
+		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_PUBLISH)) {
+			
+			
+			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_QOS, QualityOfService);
+			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETID, packetId++);
+			
+			ByteBuffer src = null; //TODO: build up message based on spec.
+			int len = 0;
+			RingWriter.writeBytes(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, src, len);
+			
+			RingWriter.publishWrites(toCon);
+		} else {
+			return -1;
+		}
+				
+		return RingBuffer.workingHeadPosition(toCon);
 	}
 	
 
