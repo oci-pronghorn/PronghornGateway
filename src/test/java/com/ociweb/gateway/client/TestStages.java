@@ -269,8 +269,7 @@ public class TestStages {
 								
 		//validation shuts down when the producers on both end have already shut down.
 		ExpectedUseValidationStage valdiationStage = new ExpectedUseValidationStage(gm, validationInputs, validationOutputs, validator);
-		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER,valdiationStage);//because of the odd loop this is in this had to be done, TODO: C, revisit if this is a good idea.
-		
+	
 		//generator is always a producer and must be marked as such.			
 		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER,
 				                  new ExpectedUseGeneratorStage(gm, generatorInputs, generatorOutputs, random, generator));

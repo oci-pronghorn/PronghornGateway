@@ -52,7 +52,7 @@ public class APIStage extends PronghornStage {
 		
 		//loop is for subscribers?
 		while (RingReader.tryReadFragment(fromCon)) {			
-			RingReader.releaseReadLock(fromCon);			
+			RingReader.releaseReadLock(fromCon);		
 		}
 		
 	}
