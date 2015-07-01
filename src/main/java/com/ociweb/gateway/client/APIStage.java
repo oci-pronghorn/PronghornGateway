@@ -20,6 +20,8 @@ public class APIStage extends PronghornStage {
 	private int packetId = -1;
 	private int packetIdLimit = -1;
 	
+	private Settings settings = new Settings(); //TODO: passed in on construction?
+	
   	/**
   	 * This first implementation is kept simple until we get a working project.
   	 * 
@@ -43,6 +45,11 @@ public class APIStage extends PronghornStage {
 	  	
         this.sizeOfPacketIdFragment = RingBuffer.from(idGenIn).fragDataSize[theOneMsg];
         
+        //add one more ring buffer so apps can write directly to it since this stage needs to copy from something.
+        //this makes testing much easier, it makes integration tighter
+        //it may add a copy?
+        
+        
 	}
 	
 	
@@ -56,18 +63,33 @@ public class APIStage extends PronghornStage {
 		}
 		
 	}
-
+	
+	//caller must pre-encode these fields so they can be re-used for mutiple calls?
+	//but this connect would be called rarely?
+	
+	//TODO: these methods may be extracted because they need not be part of an actor, 
+	//NOTE: these methods are not thread safe and are intended for sequential use.
 	
 	public boolean requestConnect(CharSequence url, boolean someFlags) {
 
 		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_CONNECT)) {
 			RingWriter.writeASCII(toCon, toConnectionConst.CON_IN_CONNECT_FIELD_URL, url);
 			
-			ByteBuffer src = null; //TODO: build up message based on spec.
-			int len = 0;
-			RingWriter.writeBytes(toCon, toConnectionConst.CON_IN_CONNECT_FIELD_PACKETDATA, src, len);
+			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
+			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
+			int byteMask = RingBuffer.byteMask(toCon);
 			
+
 			
+			int conFlags = 0;//TODO: must add 7 constants to or together   
+			byte[] willTopic = null; //utf8
+			byte[] willMessage = null; //bytes
+			byte[] user = null; //utf8
+			byte[] pass = null; //bytes
+			
+			int len = MQTTEncoder.buildConnectPacket(bytePos, byteBuffer, byteMask, settings.ttlSec, conFlags, settings.clientId, willTopic, willMessage, user, pass);
+			RingWriter.writeSpecialBytesPosAndLen(toCon, toConnectionConst.CON_IN_CONNECT_FIELD_PACKETDATA, len, bytePos);
+					
 			RingWriter.publishWrites(toCon);
 			return true;
 		} else {
@@ -90,6 +112,8 @@ public class APIStage extends PronghornStage {
 	}
 
 
+	//TODO: B, delay generative testing for this component because it may turn out to not be an actor.
+	
 	
 	public long requestPublish(CharSequence topic, int QualityOfService, CharSequence payload) {
 				
@@ -104,15 +128,17 @@ public class APIStage extends PronghornStage {
 		////
 		
 		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_PUBLISH)) {
-			
-			
+						
 			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_QOS, QualityOfService);
 			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETID, packetId++);
+						
+			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
+			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
+			int byteMask = RingBuffer.byteMask(toCon);
 			
-			ByteBuffer src = null; //TODO: build up message based on spec.
-			int len = 0;
-			RingWriter.writeBytes(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, src, len);
-			
+			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, topic, payload);
+			RingWriter.writeSpecialBytesPosAndLen(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
+				
 			RingWriter.publishWrites(toCon);
 		} else {
 			return -1;
@@ -122,14 +148,13 @@ public class APIStage extends PronghornStage {
 	}
 
 
-
 	private void loadNextPacketIdRange() {
 		int msgIdx = RingBuffer.takeMsgIdx(idGenIn);
 		assert(theOneMsg == msgIdx);
 		
-		int xx = RingBuffer.takeValue(idGenIn);
-		packetId = 0xFFFF&xx;
-		packetIdLimit = 0xFFFF&(xx>>16); 
+		int range = RingBuffer.takeValue(idGenIn);
+		packetId = 0xFFFF&range;
+		packetIdLimit = 0xFFFF&(range>>16); 
 						
 		RingBuffer.releaseReads(idGenIn);
 		RingBuffer.confirmLowLevelRead(idGenIn, sizeOfPacketIdFragment);
@@ -151,14 +176,16 @@ public class APIStage extends PronghornStage {
 		////
 		
 		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_PUBLISH)) {
-			
-			
+						
 			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_QOS, QualityOfService);
 			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETID, packetId++);
 			
-			ByteBuffer src = null; //TODO: build up message based on spec.
-			int len = 0;
-			RingWriter.writeBytes(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, src, len);
+			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
+			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
+			int byteMask = RingBuffer.byteMask(toCon);
+			
+			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, topic, payload);
+			RingWriter.writeSpecialBytesPosAndLen(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
 			
 			RingWriter.publishWrites(toCon);
 		} else {
@@ -180,14 +207,16 @@ public class APIStage extends PronghornStage {
 		////
 		
 		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_PUBLISH)) {
-			
-			
+						
 			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_QOS, QualityOfService);
 			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETID, packetId++);
 			
-			ByteBuffer src = null; //TODO: build up message based on spec.
-			int len = 0;
-			RingWriter.writeBytes(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, src, len);
+			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
+			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
+			int byteMask = RingBuffer.byteMask(toCon);
+			
+			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, topic, payload, payloadOffset, payloadLength);
+			RingWriter.writeSpecialBytesPosAndLen(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
 			
 			RingWriter.publishWrites(toCon);
 		} else {
