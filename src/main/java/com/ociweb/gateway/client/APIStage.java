@@ -20,6 +20,9 @@ public class APIStage extends PronghornStage {
 	private int packetId = -1;
 	private int packetIdLimit = -1;
 	
+
+	
+	
 	private Settings settings = new Settings(); //TODO: passed in on construction?
 	
   	/**
@@ -70,7 +73,7 @@ public class APIStage extends PronghornStage {
 	//TODO: these methods may be extracted because they need not be part of an actor, 
 	//NOTE: these methods are not thread safe and are intended for sequential use.
 	
-	public boolean requestConnect(CharSequence url, boolean someFlags) {
+	public boolean requestConnect(CharSequence url, int conFlags, byte[] willTopic, byte[] willMessageBytes, byte[] username, byte[] passwordBytes) {
 
 		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_CONNECT)) {
 			RingWriter.writeASCII(toCon, toConnectionConst.CON_IN_CONNECT_FIELD_URL, url);
@@ -78,16 +81,8 @@ public class APIStage extends PronghornStage {
 			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
 			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
 			int byteMask = RingBuffer.byteMask(toCon);
-			
-
-			
-			int conFlags = 0;//TODO: must add 7 constants to or together   
-			byte[] willTopic = null; //utf8
-			byte[] willMessage = null; //bytes
-			byte[] user = null; //utf8
-			byte[] pass = null; //bytes
-			
-			int len = MQTTEncoder.buildConnectPacket(bytePos, byteBuffer, byteMask, settings.ttlSec, conFlags, settings.clientId, willTopic, willMessage, user, pass);
+						
+			int len = MQTTEncoder.buildConnectPacket(bytePos, byteBuffer, byteMask, settings.ttlSec, conFlags, settings.clientId, willTopic, willMessageBytes, username, passwordBytes);
 			RingWriter.writeSpecialBytesPosAndLen(toCon, toConnectionConst.CON_IN_CONNECT_FIELD_PACKETDATA, len, bytePos);
 					
 			RingWriter.publishWrites(toCon);
