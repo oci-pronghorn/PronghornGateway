@@ -1,7 +1,5 @@
 package com.ociweb.gateway.client;
 
-import java.nio.ByteBuffer;
-
 import com.ociweb.pronghorn.ring.RingBuffer;
 
 public class MQTTEncoder {
@@ -25,7 +23,12 @@ public class MQTTEncoder {
 	public static final int CONNECT_FLAG_USERNAME_7      = 128;
 	
 	
-	static int buildConnectPacket(int bytePos, byte[] byteBuffer, int byteMask, int ttlSec, int conFlags, byte[] clientId, byte[] willTopic, byte[] willMessage, byte[] user, byte[] pass) {
+	static int buildConnectPacket(int bytePos, byte[] byteBuffer, int byteMask, int ttlSec, int conFlags, 
+			                      byte[] clientId, int clientIdIdx, int clientIdLength,
+			                      byte[] willTopic, int willTopicIdx, int willTopicLength,
+			                      byte[] willMessage, int willMessageIdx, int willMessageLength,
+			                      byte[] user, int userIdx, int userLength,
+			                      byte[] pass, int passIdx, int passLength) {
 		final int firstPos = bytePos;
 		
 		//The Remaining Length is the number of bytes remaining within the current packet, including data in the
@@ -52,26 +55,34 @@ public class MQTTEncoder {
 			
 		}
 		
-		bytePos = appendFixedHeader(bytePos, byteMask, byteBuffer, length); //const and remaining length, 2  bytes
+		bytePos = appendFixedHeader(bytePos, byteMask, byteBuffer, 0x10, length); //const and remaining length, 2  bytes
 		
 		//variable header
 		bytePos = appendFixedProtoName(bytePos, byteMask, byteBuffer); //const 6 bytes
-		bytePos = appendFixedProtoLevel(bytePos, byteMask, byteBuffer); //const 1 byte for version		
-		bytePos = appendFixedConFlags(bytePos, byteMask, byteBuffer, conFlags); //8 bits or togehter, if clientId zero length must set clear
-		bytePos = appendFixedKeepAlive(bytePos, byteMask, byteBuffer, ttlSec); //seconds < 16 bits
+		bytePos = appendByte(bytePos, byteMask, byteBuffer, 4); //const 1 byte for version		
+		bytePos = appendByte(bytePos, byteMask, byteBuffer, conFlags); //8 bits or togehter, if clientId zero length must set clear
+		bytePos = appendShort(bytePos, byteMask, byteBuffer, ttlSec); //seconds < 16 bits
 		
 		//payload
-		bytePos = appendClientId(bytePos, byteMask, byteBuffer, clientId);
+		bytePos = appendShort(bytePos, byteMask, byteBuffer, clientIdLength);
+		bytePos = appendBytes(bytePos, byteMask, byteBuffer, clientId, clientIdIdx, clientIdLength, 0xFFFF);
 		if (0!=(CONNECT_FLAG_WILL_FLAG_2&conFlags)) {
-			bytePos = appendWillTopicMsg(bytePos, byteMask, byteBuffer, willTopic, willMessage); //if will flag on
+			
+			bytePos = appendShort(bytePos, byteMask, byteBuffer, willTopicLength);
+			bytePos = appendBytes(bytePos, byteMask, byteBuffer, willTopic, willTopicIdx, willTopicLength, 0xFFFF);
+			bytePos = appendShort(bytePos, byteMask, byteBuffer, willMessageLength);
+			bytePos = appendBytes(bytePos, byteMask, byteBuffer, willMessage, willMessageIdx, willMessageLength, 0xFFFF);
+			
 		}
 		
 		if (0!=(CONNECT_FLAG_USERNAME_7&conFlags)) {
-			bytePos = appendUser(bytePos, byteMask, byteBuffer, user);	//if user flag on	
+			bytePos = appendShort(bytePos, byteMask, byteBuffer, userLength);
+			bytePos = appendBytes(bytePos, byteMask, byteBuffer, user, userIdx, userLength, 0xFFFF);	//if user flag on	
 		}
 		
 		if (0!=(CONNECT_FLAG_PASSWORD_6&conFlags)) {
-			bytePos = appendPass(bytePos, byteMask, byteBuffer, pass); //if pass flag on
+			bytePos = appendShort(bytePos, byteMask, byteBuffer, passLength);
+			bytePos = appendBytes(bytePos, byteMask, byteBuffer, pass, passIdx, passLength, 0xFFFF); //if pass flag on
 		}
 		
 		//total length is needed to close out this var length field in the queue
@@ -79,9 +90,9 @@ public class MQTTEncoder {
 	}
 	
 	
-	private static int appendFixedHeader(int bytePos, int byteMask, byte[] byteBuffer, int length) {
+	private static int appendFixedHeader(int bytePos, int byteMask, byte[] byteBuffer, int leadingByte, int length) {
 		
-		byteBuffer[bytePos++] = 0x10;
+		byteBuffer[bytePos++] = (byte)(0xFF&leadingByte);
 		return encodeVarLength(byteBuffer,bytePos,byteMask,length);
 		
 	}
@@ -112,65 +123,64 @@ public class MQTTEncoder {
 		return bytePos;
 	}
 
-	private static int appendFixedProtoLevel(int bytePos, int byteMask, byte[] byteBuffer) {
-		byteBuffer[bytePos++] = (byte)4;
+	private static int appendByte(int bytePos, int byteMask, byte[] byteBuffer, int value) {
+		byteBuffer[bytePos++] = (byte)value;
 		return bytePos;
 	}
 
-	private static int appendFixedConFlags(int bytePos, int byteMask, byte[] byteBuffer, int conFlags) {
-		byteBuffer[bytePos++] = (byte)conFlags;
+	private static int appendShort(int bytePos, int byteMask, byte[] byteBuffer, int value) {
+		byteBuffer[bytePos++] = (byte)(0xFF&(value>>8));
+		byteBuffer[bytePos++] = (byte)(0xFF&value);
 		return bytePos;
 	}
 
-	private static int appendFixedKeepAlive(int bytePos, int byteMask, byte[] byteBuffer, int ttlSec) {
-		byteBuffer[bytePos++] = (byte)(0xFF&(ttlSec>>8));
-		byteBuffer[bytePos++] = (byte)(0xFF&ttlSec);
-		return bytePos;
-	}
-
-	private static int appendClientId(int bytePos, int byteMask, byte[] byteBuffer, byte[] clientId) {
-		RingBuffer.copyBytesFromToRing(clientId, 0, 0xFFFF, byteBuffer, bytePos, byteMask, clientId.length);
-		return bytePos+clientId.length;
-	}
-
-	private static int appendWillTopicMsg(int bytePos, int byteMask, byte[] byteBuffer, byte[] willTopic, byte[] willMessage) {
-		RingBuffer.copyBytesFromToRing(willTopic, 0, 0xFFFF, byteBuffer, bytePos, byteMask, willTopic.length);
-		RingBuffer.copyBytesFromToRing(willMessage, 0, 0xFFFF, byteBuffer, bytePos+willTopic.length, byteMask, willMessage.length);
-		return bytePos+willTopic.length+willMessage.length;
-	}
-
-	private static int appendUser(int bytePos, int byteMask, byte[] byteBuffer, byte[] user) {
-		RingBuffer.copyBytesFromToRing(user, 0, 0xFFFF, byteBuffer, bytePos, byteMask, user.length);
-		return bytePos+user.length;
-	}
-
-	private static int appendPass(int bytePos, int byteMask, byte[] byteBuffer, byte[] pass) {
-		RingBuffer.copyBytesFromToRing(pass, 0, 0xFFFF, byteBuffer, bytePos, byteMask, pass.length);
-		return bytePos+pass.length;
+	private static int appendBytes(int targetPos, int targetMask, byte[] targetBuffer, byte[] srcBuffer, int srcIdx, int srcLength, int srcMask) {
+		RingBuffer.copyBytesFromToRing(srcBuffer, srcIdx, srcMask, targetBuffer, targetPos, targetMask, srcLength);
+		return targetPos+srcLength;
 	}
 
 
+	//TODO: get jFAST utf8 encode method for use here.
+	
+	public static void buildUTF8(CharSequence charSeq) {
+		
+		int target = 0;
+		byte[] targetBuf = new byte[10];
+		int targetMask = 0xFFFFFFFF;
+		
+		int charCount = 10;
+		int charOffset = 0;
+		
+	    int c = 0;
+	    while (c < charCount) {
+	    	target = RingBuffer.encodeSingleChar((int) charSeq.charAt(charOffset+c++), targetBuf, targetMask, target);
+	    }
+	}
+	
+	
 
-	public static int buildPublishPacket(int bytePos, byte[] byteBuffer, int byteMask, CharSequence topic,
-			CharSequence payload) {
-		// TODO Auto-generated method stub
-		return 0;
+	public static int buildPublishPacket(int bytePos, byte[] byteBuffer, int byteMask, int qos, int retain, 
+			                             byte[] topic, int topicIdx, int topicLength,
+			                             byte[] payload, int payloadIdx, int payloadLength) {
+		
+		final int firstPos = bytePos;
+		
+		int length = topic.length+2+payload.length;
+		
+		final int pubHead = 0x30 | (0x3&(qos<<1)) | 1&retain; //dup is zero that is modified later
+		bytePos = appendFixedHeader(bytePos, byteMask, byteBuffer, pubHead, length); //const and remaining length, 2  bytes
+		
+		//variable header
+		bytePos = appendShort(bytePos, byteMask, byteBuffer, topicLength);
+		bytePos = appendBytes(bytePos, byteMask, byteBuffer, topic, topicIdx, topicLength, 0xFFFF);
+		int packetId = -1;
+		bytePos = appendShort(bytePos, byteMask, byteBuffer, packetId);
+		//payload - note it does not record the length first, its just the remaining space
+		bytePos = appendBytes(bytePos, byteMask, byteBuffer, payload, payloadIdx, payloadLength, 0xFFFF);
+		
+		//total length is needed to close out this var length field in the queue
+		return firstPos-bytePos;
 	}
 
-
-	public static int buildPublishPacket(int bytePos, byte[] byteBuffer, int byteMask, CharSequence topic,
-			ByteBuffer payload) { 
-		// TODO Auto-generated method stub
-		return 0;
-	}
-
-
-	public static int buildPublishPacket(int bytePos, byte[] byteBuffer, int byteMask, CharSequence topic,
-			byte[] payload, int payloadOffset, int payloadLength) {
-		// TODO Auto-generated method stub
-		return 0;
-	}
-
-  //TODO: C, could add method to use InputStream for the payload
 
 }

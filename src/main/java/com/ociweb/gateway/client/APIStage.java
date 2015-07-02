@@ -1,7 +1,5 @@
 package com.ociweb.gateway.client;
 
-import java.nio.ByteBuffer;
-
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.ring.RingReader;
 import com.ociweb.pronghorn.ring.RingWriter;
@@ -82,7 +80,12 @@ public class APIStage extends PronghornStage {
 			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
 			int byteMask = RingBuffer.byteMask(toCon);
 						
-			int len = MQTTEncoder.buildConnectPacket(bytePos, byteBuffer, byteMask, settings.ttlSec, conFlags, settings.clientId, willTopic, willMessageBytes, username, passwordBytes);
+			int len = MQTTEncoder.buildConnectPacket(bytePos, byteBuffer, byteMask, settings.ttlSec, conFlags, 
+					                                 settings.clientId, 0 , settings.clientId.length, 
+					                                 willTopic, 0 , willTopic.length, 
+					                                 willMessageBytes, 0, willMessageBytes.length,
+					                                 username, 0, username.length,
+					                                 passwordBytes, 0, passwordBytes.length);
 			RingWriter.writeSpecialBytesPosAndLen(toCon, toConnectionConst.CON_IN_CONNECT_FIELD_PACKETDATA, len, bytePos);
 					
 			RingWriter.publishWrites(toCon);
@@ -110,7 +113,8 @@ public class APIStage extends PronghornStage {
 	//TODO: B, delay generative testing for this component because it may turn out to not be an actor.
 	
 	
-	public long requestPublish(CharSequence topic, int QualityOfService, CharSequence payload) {
+	public long requestPublish(byte[] topic, int topicIdx, int topicLength, int QualityOfService, int retain, 
+			                   byte[] payload, int payloadIdx, int payloadLength) {
 				
 		if (packetId >= packetIdLimit) {
 			//get next range
@@ -131,7 +135,9 @@ public class APIStage extends PronghornStage {
 			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
 			int byteMask = RingBuffer.byteMask(toCon);
 			
-			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, topic, payload);
+			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, QualityOfService, retain, 
+					                topic, topicIdx, topicLength, 
+					                payload, payloadIdx, payloadLength);
 			RingWriter.writeSpecialBytesPosAndLen(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
 				
 			RingWriter.publishWrites(toCon);
@@ -159,67 +165,6 @@ public class APIStage extends PronghornStage {
 		return RingBuffer.tailPosition(toCon);
 	}
 	
-	public long publish(CharSequence topic, int QualityOfService, ByteBuffer payload) {
-		if (packetId >= packetIdLimit) {
-			//get next range
-			if (RingBuffer.contentToLowLevelRead(idGenIn, sizeOfPacketIdFragment)) {				
-				loadNextPacketIdRange();				
-			} else {
-				return -1;
-			}	
-		}
-		////
-		
-		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_PUBLISH)) {
-						
-			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_QOS, QualityOfService);
-			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETID, packetId++);
-			
-			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
-			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
-			int byteMask = RingBuffer.byteMask(toCon);
-			
-			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, topic, payload);
-			RingWriter.writeSpecialBytesPosAndLen(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
-			
-			RingWriter.publishWrites(toCon);
-		} else {
-			return -1;
-		}
-				
-		return RingBuffer.workingHeadPosition(toCon);
-	}
-	
-	public long publish(CharSequence topic, int QualityOfService, byte[] payload, int payloadOffset, int payloadLength) {
-		if (packetId >= packetIdLimit) {
-			//get next range
-			if (RingBuffer.contentToLowLevelRead(idGenIn, sizeOfPacketIdFragment)) {				
-				loadNextPacketIdRange();				
-			} else {
-				return -1;
-			}	
-		}
-		////
-		
-		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_PUBLISH)) {
-						
-			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_QOS, QualityOfService);
-			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETID, packetId++);
-			
-			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
-			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
-			int byteMask = RingBuffer.byteMask(toCon);
-			
-			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, topic, payload, payloadOffset, payloadLength);
-			RingWriter.writeSpecialBytesPosAndLen(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
-			
-			RingWriter.publishWrites(toCon);
-		} else {
-			return -1;
-		}
-				
-		return RingBuffer.workingHeadPosition(toCon);
-	}
 	
 
 

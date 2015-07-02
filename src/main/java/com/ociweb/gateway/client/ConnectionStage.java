@@ -1,5 +1,7 @@
 package com.ociweb.gateway.client;
 
+import javax.net.ssl.SSLSocketFactory;
+
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
@@ -11,7 +13,8 @@ public class ConnectionStage extends PronghornStage {
 	 private final RingBuffer apiOut;
 	 private final RingBuffer timeOut;
 	 private final RingBuffer idGenOut;
-     
+	 private SSLSocketFactory sslSocketFactory;
+	 
 
 	protected ConnectionStage(GraphManager graphManager, RingBuffer apiIn,  RingBuffer timeIn, 
 			                                             RingBuffer apiOut, RingBuffer timeOut, RingBuffer idGenOut) {
@@ -27,9 +30,44 @@ public class ConnectionStage extends PronghornStage {
 		
 	}
 
+	
+	
+	@Override
+	public void startup() {
+		
+		sslSocketFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
+		
+		
+		//startup server
+//         java -Djavax.net.ssl.keyStore=mySrvKeystore -Djavax.net.ssl.keyStorePassword=123456 ServerApp
+//         
+		//startup client 
+//         java -Djavax.net.ssl.trustStore=mySrvKeystore -Djavax.net.ssl.trustStorePassword=123456 ClientApp
+//         
+		
+//         //debug
+//         -Djava.protocol.handler.pkgs=com.sun.net.ssl.internal.www.protocol -Djavax.net.debug=ssl
+		
+	}
+
+
+
+	@Override
+	public void shutdown() {
+		
+	}
+
+
+
 	@Override
 	public void run() {
-		// TODO Auto-generated method stub
+		
+		
+		
+//    create socket and connect when we get the connect message		
+//      SSLSocket sslsocket = (SSLSocket) sslsocketfactory.createSocket("localhost", 9999);
+//      sslsocket.getChannel();
+//      
 		
 	}
 
