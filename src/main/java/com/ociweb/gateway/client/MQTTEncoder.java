@@ -24,11 +24,11 @@ public class MQTTEncoder {
 	
 	
 	static int buildConnectPacket(int bytePos, byte[] byteBuffer, int byteMask, int ttlSec, int conFlags, 
-			                      byte[] clientId, int clientIdIdx, int clientIdLength,
-			                      byte[] willTopic, int willTopicIdx, int willTopicLength,
-			                      byte[] willMessage, int willMessageIdx, int willMessageLength,
-			                      byte[] user, int userIdx, int userLength,
-			                      byte[] pass, int passIdx, int passLength) {
+			                      byte[] clientId, int clientIdIdx, int clientIdLength, int clientIdMask,
+			                      byte[] willTopic, int willTopicIdx, int willTopicLength, int willTopicMask,
+			                      byte[] willMessage, int willMessageIdx, int willMessageLength, int willMessageMask,
+			                      byte[] user, int userIdx, int userLength, int userMask,
+			                      byte[] pass, int passIdx, int passLength, int passMask) {
 		final int firstPos = bytePos;
 		
 		//The Remaining Length is the number of bytes remaining within the current packet, including data in the
@@ -65,24 +65,24 @@ public class MQTTEncoder {
 		
 		//payload
 		bytePos = appendShort(bytePos, byteMask, byteBuffer, clientIdLength);
-		bytePos = appendBytes(bytePos, byteMask, byteBuffer, clientId, clientIdIdx, clientIdLength, 0xFFFF);
+		bytePos = appendBytes(bytePos, byteMask, byteBuffer, clientId, clientIdIdx, clientIdLength, clientIdMask);
 		if (0!=(CONNECT_FLAG_WILL_FLAG_2&conFlags)) {
 			
 			bytePos = appendShort(bytePos, byteMask, byteBuffer, willTopicLength);
-			bytePos = appendBytes(bytePos, byteMask, byteBuffer, willTopic, willTopicIdx, willTopicLength, 0xFFFF);
+			bytePos = appendBytes(bytePos, byteMask, byteBuffer, willTopic, willTopicIdx, willTopicLength, willTopicMask);
 			bytePos = appendShort(bytePos, byteMask, byteBuffer, willMessageLength);
-			bytePos = appendBytes(bytePos, byteMask, byteBuffer, willMessage, willMessageIdx, willMessageLength, 0xFFFF);
+			bytePos = appendBytes(bytePos, byteMask, byteBuffer, willMessage, willMessageIdx, willMessageLength, willMessageMask);
 			
 		}
 		
 		if (0!=(CONNECT_FLAG_USERNAME_7&conFlags)) {
 			bytePos = appendShort(bytePos, byteMask, byteBuffer, userLength);
-			bytePos = appendBytes(bytePos, byteMask, byteBuffer, user, userIdx, userLength, 0xFFFF);	//if user flag on	
+			bytePos = appendBytes(bytePos, byteMask, byteBuffer, user, userIdx, userLength, userMask);	//if user flag on	
 		}
 		
 		if (0!=(CONNECT_FLAG_PASSWORD_6&conFlags)) {
 			bytePos = appendShort(bytePos, byteMask, byteBuffer, passLength);
-			bytePos = appendBytes(bytePos, byteMask, byteBuffer, pass, passIdx, passLength, 0xFFFF); //if pass flag on
+			bytePos = appendBytes(bytePos, byteMask, byteBuffer, pass, passIdx, passLength, passMask); //if pass flag on
 		}
 		
 		//total length is needed to close out this var length field in the queue
@@ -139,29 +139,44 @@ public class MQTTEncoder {
 		return targetPos+srcLength;
 	}
 
-
-	//TODO: get jFAST utf8 encode method for use here.
-	
-	public static void buildUTF8(CharSequence charSeq) {
+	/**
+	 * 
+	 * Converts CharSequence (base class of String) into UTF-8 encoded bytes and writes those bytes to an array.
+	 * The write loops around the end using the targetMask so the returned length must be checked after the call
+	 * to determine if and overflow occurred. 
+	 * 
+	 * Due to the variable nature of converting chars into bytes there is not easy way to know before walking how
+	 * many bytes will be needed.  To prevent any overflow ensure that you have 6*lengthOfCharSequence bytes available.
+	 * 
+	 */
+	public static int convertToUTF8(final CharSequence charSeq, final int charSeqOff, final int charSeqLength, final byte[] targetBuf, final int targetIdx, final int targetMask) {
 		
-		int target = 0;
-		byte[] targetBuf = new byte[10];
-		int targetMask = 0xFFFFFFFF;
-		
-		int charCount = 10;
-		int charOffset = 0;
-		
+		int target = targetIdx;				
 	    int c = 0;
-	    while (c < charCount) {
-	    	target = RingBuffer.encodeSingleChar((int) charSeq.charAt(charOffset+c++), targetBuf, targetMask, target);
+	    while (c < charSeqLength) {
+	    	target = RingBuffer.encodeSingleChar((int) charSeq.charAt(charSeqOff+c++), targetBuf, targetMask, target);
 	    }
+	    //NOTE: the above loop will keep looping around the target buffer until done and will never cause an array out of bounds.
+	    //      the length returned however will be larger than targetMask, this should be treated as an error.
+	    return target-targetIdx;//length;
 	}
 	
+	public static int convertToUTF8(final char[] charSeq, final int charSeqOff, final int charSeqLength, final byte[] targetBuf, final int targetIdx, final int targetMask) {
+		
+		int target = targetIdx;				
+	    int c = 0;
+	    while (c < charSeqLength) {
+	    	target = RingBuffer.encodeSingleChar((int) charSeq[charSeqOff+c++], targetBuf, targetMask, target);
+	    }
+	    //NOTE: the above loop will keep looping around the target buffer until done and will never cause an array out of bounds.
+	    //      the length returned however will be larger than targetMask, this should be treated as an error.
+	    return target-targetIdx;//length;
+	}	
 	
 
 	public static int buildPublishPacket(int bytePos, byte[] byteBuffer, int byteMask, int qos, int retain, 
-			                             byte[] topic, int topicIdx, int topicLength,
-			                             byte[] payload, int payloadIdx, int payloadLength) {
+			                             byte[] topic, int topicIdx, int topicLength, int topicMask,
+			                             byte[] payload, int payloadIdx, int payloadLength, int payloadMask) {
 		
 		final int firstPos = bytePos;
 		
@@ -172,11 +187,11 @@ public class MQTTEncoder {
 		
 		//variable header
 		bytePos = appendShort(bytePos, byteMask, byteBuffer, topicLength);
-		bytePos = appendBytes(bytePos, byteMask, byteBuffer, topic, topicIdx, topicLength, 0xFFFF);
+		bytePos = appendBytes(bytePos, byteMask, byteBuffer, topic, topicIdx, topicLength, topicMask);
 		int packetId = -1;
 		bytePos = appendShort(bytePos, byteMask, byteBuffer, packetId);
 		//payload - note it does not record the length first, its just the remaining space
-		bytePos = appendBytes(bytePos, byteMask, byteBuffer, payload, payloadIdx, payloadLength, 0xFFFF);
+		bytePos = appendBytes(bytePos, byteMask, byteBuffer, payload, payloadIdx, payloadLength, payloadMask);
 		
 		//total length is needed to close out this var length field in the queue
 		return firstPos-bytePos;

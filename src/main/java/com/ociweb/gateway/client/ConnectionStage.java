@@ -1,8 +1,17 @@
 package com.ociweb.gateway.client;
 
+import java.io.IOException;
+import java.net.UnknownHostException;
+import java.nio.channels.SelectableChannel;
+import java.nio.channels.SocketChannel;
+
+import javax.net.SocketFactory;
+import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 
 import com.ociweb.pronghorn.ring.RingBuffer;
+import com.ociweb.pronghorn.ring.RingReader;
+import com.ociweb.pronghorn.ring.RingWriter;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
@@ -58,16 +67,63 @@ public class ConnectionStage extends PronghornStage {
 	}
 
 
-
+	
+	
 	@Override
 	public void run() {
 		
+		//read input from socket and if data is found
+		//parse it  
+		//send it up to api
+		// if ack then release publish.
 		
-		
-//    create socket and connect when we get the connect message		
-//      SSLSocket sslsocket = (SSLSocket) sslsocketfactory.createSocket("localhost", 9999);
-//      sslsocket.getChannel();
-//      
+		if (RingReader.tryReadFragment(apiIn)) {
+			switch (RingReader.getMsgIdx(apiIn)) {
+			
+				case ConInConst.MSG_CONNECT:
+					
+						SocketFactory sslsocketfactory = SocketFactory.getDefault();
+				//    create socket and connect when we get the connect message		
+					SSLSocket sslsocket;
+					try {
+						sslsocket = (SSLSocket) sslsocketfactory .createSocket("localhost", 9999);
+						SelectableChannel channel = sslsocket.getChannel().configureBlocking(false);
+						//is this peformant?
+					//	channel.
+						
+						
+						
+					} catch (UnknownHostException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					      
+					
+					
+					break;
+				case ConInConst.MSG_DISCONNECT:
+					
+					
+					break;
+				case ConInConst.MSG_PUBLISH:
+					
+					
+					//publish message to connection from the input queue
+					//grab full block across fields,, may need to support constants later
+					//qos 0 just do it.
+					//qos 1 do it but do not rlease on ring
+					//    when  ack comes must release ring.
+					//    release all blocks that we can otherwise hold.
+					
+					
+					break;
+						
+			
+			}
+		}
 		
 	}
 

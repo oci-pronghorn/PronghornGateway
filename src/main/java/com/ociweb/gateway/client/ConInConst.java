@@ -6,30 +6,40 @@ import static com.ociweb.pronghorn.ring.FieldReferenceOffsetManager.lookupTempla
 import com.ociweb.pronghorn.ring.FieldReferenceOffsetManager;
 
 public class ConInConst {
-
 	
-	public final int MSG_CON_IN_PUBLISH;
-	public final int MSG_CON_IN_CONNECT;
-	public final int MSG_CON_IN_DISCONNECT;
-	public final int MSG_CON_IN_SUBSCRIBE;  
-	public final int MSG_CON_IN_UNSUBSCRIBE;
-	public final int MSG_CON_IN_PUB_ACK;
-	public final int MSG_CON_IN_PUB_REC;
-	public final int MSG_CON_IN_PUB_COMP;  
+    //confirm in unit test that this constant matches
+    //TODO: AAAA, new unit tests needed,  ConInConst.MSG_CON_IN_CONNECT:
+	final static int MSG_CONNECT = 0;
+	final static int MSG_DISCONNECT = 1;
+	final static int MSG_PUBLISH = 2;
 	
-	public final int CON_IN_PUBLISH_FIELD_QOS;
-	public final int CON_IN_PUBLISH_FIELD_PACKETID;
-	public final int CON_IN_PUBLISH_FIELD_PACKETDATA;  	
-	public final int CON_IN_CONNECT_FIELD_URL;
-	public final int CON_IN_CONNECT_FIELD_PACKETDATA;		  	
-	public final int CON_IN_SUBSCRIBE_FIELD_PACKETDATA;
-	public final int CON_IN_UNSUBSCRIBE_FIELD_PACKETDATA;
-	public final int CON_IN_PUB_ACK_FIELD_PACKETDATA;
-	public final int CON_IN_PUB_REC_FIELD_PACKETDATA;
-	public final int CON_IN_PUB_COMP_FIELD_PACKETDATA;
-	
-	public ConInConst(FieldReferenceOffsetManager fromToCon) {
 		
+	public static final int MSG_CON_IN_PUBLISH;
+	public static final int MSG_CON_IN_CONNECT;
+	public static final int MSG_CON_IN_DISCONNECT;
+	public static final int MSG_CON_IN_SUBSCRIBE;  
+	public static final int MSG_CON_IN_UNSUBSCRIBE;
+	public static final int MSG_CON_IN_PUB_ACK;
+	public static final int MSG_CON_IN_PUB_REC;
+	public static final int MSG_CON_IN_PUB_COMP;  
+	
+	
+	public static final int CON_IN_PUBLISH_FIELD_QOS;
+	public static final int CON_IN_PUBLISH_FIELD_PACKETID;
+	public static final int CON_IN_PUBLISH_FIELD_PACKETDATA;  	
+	public static final int CON_IN_CONNECT_FIELD_URL;
+	public static final int CON_IN_CONNECT_FIELD_PACKETDATA;		  	
+	public static final int CON_IN_SUBSCRIBE_FIELD_PACKETDATA;
+	public static final int CON_IN_UNSUBSCRIBE_FIELD_PACKETDATA;
+	public static final int CON_IN_PUB_ACK_FIELD_PACKETDATA;
+	public static final int CON_IN_PUB_REC_FIELD_PACKETDATA;
+	public static final int CON_IN_PUB_COMP_FIELD_PACKETDATA;
+	
+	static {
+		
+		FieldReferenceOffsetManager fromToCon = ClientFromFactory.connectionInFROM;
+		
+		//TODO: move this block to test to confirm the constants.
 		MSG_CON_IN_PUBLISH     = lookupTemplateLocator("Publish",fromToCon);  
 		MSG_CON_IN_CONNECT     = lookupTemplateLocator("Connect",fromToCon);  
 		MSG_CON_IN_DISCONNECT  = lookupTemplateLocator("Disconnect",fromToCon);  
@@ -49,10 +59,7 @@ public class ConInConst {
 	  	CON_IN_PUB_ACK_FIELD_PACKETDATA = lookupFieldLocator("PacketId", MSG_CON_IN_PUB_ACK, fromToCon);
 	  	CON_IN_PUB_REC_FIELD_PACKETDATA = lookupFieldLocator("PacketId", MSG_CON_IN_PUB_REC, fromToCon);
 	  	CON_IN_PUB_COMP_FIELD_PACKETDATA = lookupFieldLocator("PacketId", MSG_CON_IN_PUB_COMP, fromToCon);
-	  		  	
-		
+	  		  			
 	}
-	
-	
-	
+		
 }

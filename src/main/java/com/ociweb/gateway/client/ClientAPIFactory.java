@@ -8,6 +8,7 @@ import com.ociweb.gateway.common.TimeKeeperStage;
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.ring.RingBufferConfig;
 import com.ociweb.pronghorn.stage.monitor.MonitorConsoleStage;
+import com.ociweb.pronghorn.stage.monitor.MonitorFROM;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 import com.ociweb.pronghorn.stage.scheduling.StageScheduler;
 import com.ociweb.pronghorn.stage.scheduling.ThreadPerStageScheduler;
@@ -22,9 +23,9 @@ public class ClientAPIFactory {
 		int queuedIds = 3;
 		int queuedTimeControl = 2;
 		int queuedTimeTrigger = 2;
-		int queuedConIn = 5;
-		int queuedConOut = 5;
-		int maxTopicOrPayload = 256;
+		int queuedConIn = 2;
+		int queuedConOut = 2;
+		int maxTopicOrPayload = 16;
 		
 		APIStage result = buildInstance(gm, 
 				            queuedIds, queuedTimeControl, queuedTimeTrigger, queuedConIn,
@@ -56,14 +57,24 @@ public class ClientAPIFactory {
 
 		//these instances are all held by the graph which is passed in	
 		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, new IdGenStage(gm, releasedIds, unusedIds));
+		
+		//TODO: AA, must find way to pass in constructor for one of these instances. businessFactory instance may work best. may need clone method with same config but new pipes.
 		APIStage apiStage = new APIStage(gm, unusedIds, connectionOut, connectionIn);
+		
 		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, apiStage);
 		
 		new TimeKeeperStage(gm, timeControl, timeTrigger);
 		new ConnectionStage(gm, connectionIn, timeTrigger, connectionOut, timeControl, releasedIds);
 		
 		//TODO: B, replace with JMX version before release.
-	    MonitorConsoleStage.attach(gm); //TODO: also must remove xml template and use static from instead.
+		
+		
+		//enable monitoring if we have 64mb of memory, //TODO: AAA, do not turn on takes all the memory.
+		if (Runtime.getRuntime().freeMemory()>(64<<20)) {
+			Integer defaultMonitorRate = Integer.valueOf(50000000);
+			RingBufferConfig defaultMonitorRingConfig = new RingBufferConfig(CommonFromFactory.monitorFROM, 5, 0);
+		    MonitorConsoleStage.attach(gm,defaultMonitorRate,defaultMonitorRingConfig); 
+		}
 		return apiStage;
 	}
 

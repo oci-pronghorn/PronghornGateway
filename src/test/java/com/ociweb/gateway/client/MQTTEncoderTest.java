@@ -1,12 +1,170 @@
 package com.ociweb.gateway.client;
 
+import static org.junit.Assert.*;
+
+import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
+import java.util.Random;
 
 import org.junit.Assert;
 import org.junit.Test;
 
 public class MQTTEncoderTest {
 
+	
+	@Test
+	public void testconvertToUTF8() {
+		
+		int targetMask = (1<<10)-1;
+		byte[] target = new byte[targetMask+1];
+		int tagetIdx = 0;
+		StringBuilder builder = new StringBuilder();
+				
+		Random random = new Random();//may want to put a seed here if this fails randomly
+				
+		int largestChar = 55000;// TODO: B, fix bug where last bytes mismatch, repro by using this value. 57000;
+		int longestSequence = targetMask/6;
+				
+		int testSize = 20000;
+		while (--testSize>=0) {	
+		
+			builder.setLength(0);
+			int len = random.nextInt(longestSequence)+1;
+			while (--len>=0) {
+				char c = (char)random.nextInt(largestChar);
+				builder.append(c);
+			}
+			
+			String testValue = builder.toString();		
+			
+			int testOff = 0;
+			int testLen = testValue.length();
+			MQTTEncoder.convertToUTF8(testValue, testOff, testLen, target, tagetIdx, targetMask);
+			
+			try {
+				byte[] expected = testValue.getBytes("UTF-8");
+				
+			    int i = expected.length;
+			    while (--i>=0) {
+			    	if (expected[i]!=target[i]) {
+
+			    		System.err.println(testValue);
+			    		System.err.println("exp:"+Arrays.toString(expected));
+			    		System.err.println("gen:"+Arrays.toString(Arrays.copyOfRange(target, 0, expected.length)));
+
+			    		fail("values do not match at "+i+" out of "+expected.length);
+			    		
+			    	}
+			    }
+			} catch (UnsupportedEncodingException e) {
+				fail(e.getMessage());
+			}
+		}
+	}
+	
+	//the new implementation has an advantage on short strings
+	//this advantage disappears with strings longer than 64 chars
+	//on long stings the new implementation is about the same speed
+	private final int speedSizeTest = 10000000;
+	private final int speedMaxChar = 55000;
+	private final int speedTextSize = 4;//text up to 16 chars
+	private final int speedSeed = 32;
+	
+	@Test
+	public void testconvertToUTF8SpeeedNew() {
+		
+		int targetMask = (1<<speedTextSize)-1;
+		byte[] target = new byte[targetMask+1];
+		int tagetIdx = 0;
+		StringBuilder builder = new StringBuilder();
+				
+		Random random = new Random(speedSeed);
+				
+		int largestChar = speedMaxChar;
+		int longestSequence = targetMask/6;
+		long sum = 0;
+		int testSize = speedSizeTest;
+		while (--testSize>=0) {	
+		
+			builder.setLength(0);
+			int len = random.nextInt(longestSequence)+1;
+			while (--len>=0) {
+				char c = (char)random.nextInt(largestChar);
+				builder.append(c);
+			}
+			
+			int bytes = MQTTEncoder.convertToUTF8(builder, 0, builder.length(), target, tagetIdx, targetMask);
+			
+			sum += bytes;
+			if (bytes==0) {
+				System.err.println("test value:"+builder.toString());
+				fail();
+				
+			}
+			
+		}
+		System.out.println("sum:"+sum);
+	}
+	
+	@Test
+	public void testconvertToUTF8SpeedClassic() {
+		
+		int targetMask = (1<<speedTextSize)-1;
+		StringBuilder builder = new StringBuilder();
+				
+		Random random = new Random(speedSeed);
+				
+		int largestChar = speedMaxChar;
+		int longestSequence = targetMask/6;
+				
+		long sum = 0;
+		int testSize = speedSizeTest;
+		while (--testSize>=0) {	
+		
+			builder.setLength(0);
+			int len = random.nextInt(longestSequence)+1;
+			while (--len>=0) {
+				char c = (char)random.nextInt(largestChar);
+				builder.append(c);
+			}
+			
+			String testValue = builder.toString();		
+			
+			
+			try {
+				byte[] expected = testValue.getBytes("UTF-8");
+				
+				sum+=expected.length;
+				if (null==expected || 0==expected.length) {
+					System.err.println("test value:"+testValue);
+					fail();
+					
+				}
+				
+			} catch (UnsupportedEncodingException e) {
+				fail(e.getMessage());
+			}
+		}
+		System.out.println("sum:"+sum);
+	}
+	
+
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
 	@Test
 	public void testEncodeVarLength() {
 		//this is a very simple generative test because it just uses sequential numbers

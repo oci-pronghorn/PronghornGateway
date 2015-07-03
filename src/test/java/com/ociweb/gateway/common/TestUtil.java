@@ -19,14 +19,16 @@ public class TestUtil {
 				System.err.println("Template file:"+encodedFrom);	
 				
 				assertEquals("Scripts same length",expectedFrom.tokens.length,expectedFrom.fieldNameScript.length);
-				if (null!=encodedFrom) {
-					assertEquals("FieldNameScript",expectedFrom.fieldNameScript.length,encodedFrom.fieldNameScript.length);
-					assertEquals("FieldIdScript",expectedFrom.fieldIdScript.length,encodedFrom.fieldIdScript.length);
-					assertEquals("DictionaryNameScript",expectedFrom.dictionaryNameScript.length,encodedFrom.dictionaryNameScript.length);
-				}
 				
 				StringBuilder target = new StringBuilder();
 				TemplateHandler.buildFROMConstructionSource(target, expectedFrom, varName, templateFile.substring(1+templateFile.lastIndexOf('/') ));												
+
+				if (null!=encodedFrom) {
+					assertEquals("FieldNameScript "+target, expectedFrom.fieldNameScript.length,encodedFrom.fieldNameScript.length);
+					assertEquals("FieldIdScript"+target,expectedFrom.fieldIdScript.length,encodedFrom.fieldIdScript.length);
+					assertEquals("DictionaryNameScript"+target,expectedFrom.dictionaryNameScript.length,encodedFrom.dictionaryNameScript.length);
+				}
+				
 				System.err.println(target);
 				
 				fail(varName+" template does not match template file "+templateFile);

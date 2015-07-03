@@ -3,6 +3,7 @@ package com.ociweb.gateway.common;
 import org.junit.Test;
 
 import com.ociweb.pronghorn.ring.FieldReferenceOffsetManager;
+import com.ociweb.pronghorn.stage.monitor.MonitorFROM;
 
 public class ValidMessageTemplates {
 
@@ -35,4 +36,15 @@ public class ValidMessageTemplates {
 		TestUtil.testForMatchingFROMs(templateFile, varName, encodedFrom);
 	}
 
+	
+	@Test
+	public void validateMonitorTemplate() {
+		String templateFile = "/ringMonitor.xml";
+		String varName = "monitorFROM";				
+		FieldReferenceOffsetManager encodedFrom = CommonFromFactory.monitorFROM;
+		
+		TestUtil.testForMatchingFROMs(templateFile, varName, encodedFrom);
+	}
+
+	
 }

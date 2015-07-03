@@ -12,13 +12,8 @@ public class APIStage extends PronghornStage {
 	private final RingBuffer idGenIn; //used by same external thread
 	private final RingBuffer toCon;
 	 	
-	private final ConOutConst fromConnectionConst;
-	private final ConInConst toConnectionConst;
-
 	private int packetId = -1;
 	private int packetIdLimit = -1;
-	
-
 	
 	
 	private Settings settings = new Settings(); //TODO: passed in on construction?
@@ -40,10 +35,7 @@ public class APIStage extends PronghornStage {
 		this.idGenIn = idGenIn;
 		this.fromCon = fromC;
 		this.toCon = toC;
-		
-        this.fromConnectionConst = new ConOutConst(RingBuffer.from(fromCon));
-        this.toConnectionConst = new ConInConst(RingBuffer.from(toCon)); 		  
-	  	
+			  	
         this.sizeOfPacketIdFragment = RingBuffer.from(idGenIn).fragDataSize[theOneMsg];
         
         //add one more ring buffer so apps can write directly to it since this stage needs to copy from something.
@@ -62,8 +54,17 @@ public class APIStage extends PronghornStage {
 		while (RingReader.tryReadFragment(fromCon)) {			
 			RingReader.releaseReadLock(fromCon);		
 		}
+		businessLogic();
+	}
+	
+	
+	public void businessLogic() {
+		//call the protected methods on this single thread
+		
+		
 		
 	}
+	
 	
 	//caller must pre-encode these fields so they can be re-used for mutiple calls?
 	//but this connect would be called rarely?
@@ -71,22 +72,22 @@ public class APIStage extends PronghornStage {
 	//TODO: these methods may be extracted because they need not be part of an actor, 
 	//NOTE: these methods are not thread safe and are intended for sequential use.
 	
-	public boolean requestConnect(CharSequence url, int conFlags, byte[] willTopic, byte[] willMessageBytes, byte[] username, byte[] passwordBytes) {
+	protected boolean requestConnect(CharSequence url, int conFlags, byte[] willTopic, byte[] willMessageBytes, byte[] username, byte[] passwordBytes) {
 
-		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_CONNECT)) {
-			RingWriter.writeASCII(toCon, toConnectionConst.CON_IN_CONNECT_FIELD_URL, url);
+		if (RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_CONNECT)) {
+			RingWriter.writeASCII(toCon, ConInConst.CON_IN_CONNECT_FIELD_URL, url);
 			
 			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
 			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
 			int byteMask = RingBuffer.byteMask(toCon);
 						
 			int len = MQTTEncoder.buildConnectPacket(bytePos, byteBuffer, byteMask, settings.ttlSec, conFlags, 
-					                                 settings.clientId, 0 , settings.clientId.length, 
-					                                 willTopic, 0 , willTopic.length, 
-					                                 willMessageBytes, 0, willMessageBytes.length,
-					                                 username, 0, username.length,
-					                                 passwordBytes, 0, passwordBytes.length);
-			RingWriter.writeSpecialBytesPosAndLen(toCon, toConnectionConst.CON_IN_CONNECT_FIELD_PACKETDATA, len, bytePos);
+					                                 settings.clientId, 0 , settings.clientId.length, 0xFFFF,
+					                                 willTopic, 0 , willTopic.length, 0xFFFF,
+					                                 willMessageBytes, 0, willMessageBytes.length, 0xFFFF,
+					                                 username, 0, username.length, 0xFFFF,
+					                                 passwordBytes, 0, passwordBytes.length, 0xFFFF);
+			RingWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA, len, bytePos);
 					
 			RingWriter.publishWrites(toCon);
 			return true;
@@ -96,11 +97,9 @@ public class APIStage extends PronghornStage {
 
 	}
 
-
-
-	public boolean requestDisconnect() {
+	protected boolean requestDisconnect() {
 		
-		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_DISCONNECT)) {
+		if (RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_DISCONNECT)) {
 			RingWriter.publishWrites(toCon);
 			return true;
 		} else {
@@ -113,8 +112,9 @@ public class APIStage extends PronghornStage {
 	//TODO: B, delay generative testing for this component because it may turn out to not be an actor.
 	
 	
-	public long requestPublish(byte[] topic, int topicIdx, int topicLength, int QualityOfService, int retain, 
-			                   byte[] payload, int payloadIdx, int payloadLength) {
+	protected long requestPublish(byte[] topic, int topicIdx, int topicLength, int topicMask, 
+			                   int QualityOfService, int retain, 
+			                   byte[] payload, int payloadIdx, int payloadLength, int payloadMask) {
 				
 		if (packetId >= packetIdLimit) {
 			//get next range
@@ -126,19 +126,19 @@ public class APIStage extends PronghornStage {
 		}
 		////
 		
-		if (RingWriter.tryWriteFragment(toCon, toConnectionConst.MSG_CON_IN_PUBLISH)) {
+		if (RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_PUBLISH)) {
 						
-			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_QOS, QualityOfService);
-			RingWriter.writeInt(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETID, packetId++);
+			RingWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_QOS, QualityOfService);
+			RingWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETID, packetId++);
 						
 			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
 			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
 			int byteMask = RingBuffer.byteMask(toCon);
 			
 			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, QualityOfService, retain, 
-					                topic, topicIdx, topicLength, 
-					                payload, payloadIdx, payloadLength);
-			RingWriter.writeSpecialBytesPosAndLen(toCon, toConnectionConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
+					                topic, topicIdx, topicLength, topicMask, 
+					                payload, payloadIdx, payloadLength, payloadMask);
+			RingWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
 				
 			RingWriter.publishWrites(toCon);
 		} else {
@@ -161,11 +161,8 @@ public class APIStage extends PronghornStage {
 		RingBuffer.confirmLowLevelRead(idGenIn, sizeOfPacketIdFragment);
 	}
 	
-	public long requestReleasedPosition() {
+	protected long requestReleasedPosition() {
 		return RingBuffer.tailPosition(toCon);
 	}
 	
-	
-
-
 }

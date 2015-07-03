@@ -7,19 +7,21 @@ import com.ociweb.pronghorn.ring.FieldReferenceOffsetManager;
 
 public class ConOutConst {
 
-	public final int MSG_CON_OUT_PUB_ACK;
-	public final int MSG_CON_OUT_PUB_REC;
-	public final int MSG_CON_OUT_MESSAGE;
+	public static final int MSG_CON_OUT_PUB_ACK;
+	public static final int MSG_CON_OUT_PUB_REC;
+	public static final int MSG_CON_OUT_MESSAGE;
 	
-	public final int CON_OUT_PUB_ACK_FIELD_PACKETDATA;
-	public final int CON_OUT_PUB_REC_FIELD_PACKETDATA;	
-	public final int CON_OUT_MESSAGE_FIELD_QOS;
-	public final int CON_OUT_MESSAGE_FIELD_PACKETID;
-	public final int CON_OUT_MESSAGE_FIELD_TOPIC;
-	public final int CON_OUT_MESSAGE_FIELD_PAYLOAD;
+	public static final int CON_OUT_PUB_ACK_FIELD_PACKETDATA;
+	public static final int CON_OUT_PUB_REC_FIELD_PACKETDATA;	
+	public static final int CON_OUT_MESSAGE_FIELD_QOS;
+	public static final int CON_OUT_MESSAGE_FIELD_PACKETID;
+	public static final int CON_OUT_MESSAGE_FIELD_TOPIC;
+	public static final int CON_OUT_MESSAGE_FIELD_PAYLOAD;
 	
-  	public ConOutConst(FieldReferenceOffsetManager fromOutCon) {
+  	static {
 	  	
+  		FieldReferenceOffsetManager fromOutCon = ClientFromFactory.connectionOutFROM;
+  		
 		MSG_CON_OUT_PUB_ACK = lookupTemplateLocator("PubAck",fromOutCon);  
 		MSG_CON_OUT_PUB_REC = lookupTemplateLocator("PubRec",fromOutCon);  
 		MSG_CON_OUT_MESSAGE = lookupTemplateLocator("Message",fromOutCon);
