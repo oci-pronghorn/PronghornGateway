@@ -24,7 +24,7 @@ public class IdGenStage extends PronghornStage {
 	private static final Logger log = LoggerFactory.getLogger(IdGenStage.class);
 	
 	public static final int MAX_BLOCK_SIZE = 4096;
-	private static final int MAX_CONSUMED_BLOCKS = 128;
+	private static final int MAX_CONSUMED_BLOCKS = 128;//128*4 == 512 bytes where 8k could do map, must be <= 1024
 	private static final int MAX_CONSUMED_BLOCKS_LIMIT = MAX_CONSUMED_BLOCKS-1;
 	private static final int STOP_CODE = 0xFFFFFFFF;
 	
