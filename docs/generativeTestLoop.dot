@@ -1,0 +1,39 @@
+
+
+digraph {
+  rankdir = TB;
+  
+  "adaptOut"[label="Optional\nOutput\nAdapter"]
+  "adaptIn"[label="Optional\nInput\nAdapter"]
+  
+  
+  "Tested" -> "adaptOut"[color=red]
+  "adaptOut" -> "Validate"[color=red]
+  "adaptIn" -> "Tested"[color=blue] 
+  "Validate" -> "adaptIn"[color=blue] 
+  "Validate" -> "Generate"[color=red]
+  "Generate" -> "Split"[color=blue]
+  "Split" -> "Validate"[color=blue]
+  "Split" -> "Reduce"[color=blue]
+  "Validate" -> "Reduce"
+  //save
+  //reset for next test
+  //reduce that example
+  
+  "Reduce" -> "ReTest"[color="blue"]
+  
+  "Reduce" -> "Report"
+  "Reduce" -> "ReTest"[color="purple"]
+  "Reduce" -> "ReTest"[color="purple"]
+  
+  "ReTest" -> "Reduce"[color="green"] 
+  
+  //retest passes then we removed too much must roll back to archive 2
+  //retest fails then we are ok and must move forward with smaller set
+
+  //ReTest will create new Tested/Validate/Adapters with clean state for each run.
+  
+  
+  {rank = same; adaptOut; adaptIn;}
+  
+  }
