@@ -24,6 +24,10 @@ public class ConnectionStage extends PronghornStage {
 	 private final RingBuffer idGenOut;
 	 private SSLSocketFactory sslSocketFactory;
 	 
+	 private final int inFlightLimit;
+	 
+	 private final int[] seen;
+	 private int seenCount;
 
 	protected ConnectionStage(GraphManager graphManager, RingBuffer apiIn,  RingBuffer timeIn, 
 			                                             RingBuffer apiOut, RingBuffer timeOut, RingBuffer idGenOut) {
@@ -36,6 +40,9 @@ public class ConnectionStage extends PronghornStage {
 		this.apiOut = apiOut;
 		this.timeOut = timeOut;    //use low level api only 1 message type
 		this.idGenOut = idGenOut;   //use low level api, only 1 message type
+		
+		this.inFlightLimit = 10;//TODO: Needs to be configured 
+		this.seen = new int[inFlightLimit];
 		
 	}
 
@@ -72,6 +79,9 @@ public class ConnectionStage extends PronghornStage {
 	@Override
 	public void run() {
 		
+		
+		//65536/8 is 1<<13 8k bytes for perfect hash
+		
 		//read input from socket and if data is found
 		//parse it  
 		//send it up to api
@@ -81,8 +91,31 @@ public class ConnectionStage extends PronghornStage {
 			switch (RingReader.getMsgIdx(apiIn)) {
 			
 				case ConInConst.MSG_CONNECT:
+			
+					//Use message size to derive release bounds etc
+					//allocate one array of packetIds to remember which have come back.
+					//2 bytes for each would fit 4K in 8K block so at that point the bit mask would be better for up to 64K flight
+					//if no swap over then 64K in flight would be 128K of memory.
+										
 					
-						SocketFactory sslsocketfactory = SocketFactory.getDefault();
+					//Keep array the size of in flight, which can not be changed at runtime.
+					// probability says the one we expect is the one that will arrive
+					// so liniarly check each in probability order.
+					//very little storage for small in flight values
+					//all 
+					
+					//Algo:
+					//  if ack is on end of queue then release message
+					//         else add value to seen list
+					//  upon release
+					//     check seen list for match 
+					//     if match found release that one
+					//     set value to -1 but move count if at the end 
+					
+					//upon "release" must store an int and a long for release later.
+					
+					
+					SocketFactory sslsocketfactory = SocketFactory.getDefault();
 				//    create socket and connect when we get the connect message		
 					SSLSocket sslsocket;
 					try {
