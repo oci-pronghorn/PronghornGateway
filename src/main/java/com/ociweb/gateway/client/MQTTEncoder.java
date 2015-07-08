@@ -173,7 +173,8 @@ public class MQTTEncoder {
 	    return target-targetIdx;//length;
 	}	
 	
-
+    //TODO: B, Break up the packet into to splittable parts so we can use constants that need not be copied  through the ring buffer
+	
 	public static int buildPublishPacket(int bytePos, byte[] byteBuffer, int byteMask, int qos, int retain, 
 			                             byte[] topic, int topicIdx, int topicLength, int topicMask,
 			                             byte[] payload, int payloadIdx, int payloadLength, int payloadMask) {

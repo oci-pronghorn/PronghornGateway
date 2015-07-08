@@ -2,7 +2,7 @@ package com.ociweb.gateway.client;
 
 import java.io.IOException;
 import java.net.UnknownHostException;
-import java.nio.channels.SelectableChannel;
+import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
 import javax.net.SocketFactory;
@@ -11,7 +11,6 @@ import javax.net.ssl.SSLSocketFactory;
 
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.ring.RingReader;
-import com.ociweb.pronghorn.ring.RingWriter;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
@@ -25,9 +24,22 @@ public class ConnectionStage extends PronghornStage {
 	 private SSLSocketFactory sslSocketFactory;
 	 
 	 private final int inFlightLimit;
+	 private SocketChannel channel;
+	 private StringBuilder commonBuilder = new StringBuilder();
+	 private String host;	
+	 private byte state; //0 disconnected
+	 private ByteBuffer inputSocketBuffer;
 	 
-	 private final int[] seen;
-	 private int seenCount;
+	//startup server
+	//      java -Djavax.net.ssl.keyStore=mySrvKeystore -Djavax.net.ssl.keyStorePassword=123456 ServerApp
+	//      
+			//startup client 
+	//      java -Djavax.net.ssl.trustStore=mySrvKeystore -Djavax.net.ssl.trustStorePassword=123456 ClientApp
+	//      
+			
+	//      //debug
+	//      -Djava.protocol.handler.pkgs=com.sun.net.ssl.internal.www.protocol -Djavax.net.debug=ssl
+	 
 
 	protected ConnectionStage(GraphManager graphManager, RingBuffer apiIn,  RingBuffer timeIn, 
 			                                             RingBuffer apiOut, RingBuffer timeOut, RingBuffer idGenOut) {
@@ -42,7 +54,7 @@ public class ConnectionStage extends PronghornStage {
 		this.idGenOut = idGenOut;   //use low level api, only 1 message type
 		
 		this.inFlightLimit = 10;//TODO: Needs to be configured 
-		this.seen = new int[inFlightLimit];
+
 		
 	}
 
@@ -52,18 +64,7 @@ public class ConnectionStage extends PronghornStage {
 	public void startup() {
 		
 		sslSocketFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
-		
-		
-		//startup server
-//         java -Djavax.net.ssl.keyStore=mySrvKeystore -Djavax.net.ssl.keyStorePassword=123456 ServerApp
-//         
-		//startup client 
-//         java -Djavax.net.ssl.trustStore=mySrvKeystore -Djavax.net.ssl.trustStorePassword=123456 ClientApp
-//         
-		
-//         //debug
-//         -Djava.protocol.handler.pkgs=com.sun.net.ssl.internal.www.protocol -Djavax.net.debug=ssl
-		
+		inputSocketBuffer = ByteBuffer.allocate(256);//TODO: how big are the acks we need room for?
 	}
 
 
@@ -83,65 +84,106 @@ public class ConnectionStage extends PronghornStage {
 		//65536/8 is 1<<13 8k bytes for perfect hash
 		
 		//read input from socket and if data is found
-		//parse it  
-		//send it up to api
-		// if ack then release publish.
+		if (state==2) {
+			if (!channel.isOpen()) {
+				//TODO: A, network error expected this to be open already
+				connect();
+				
+				if (!channel.isOpen()) {
+					return;//try again later
+					
+				}
+				
+				//can not use selectors becauase
+				//   1. they create a lot of garbage
+				//   2. they get in the way of my own business specific scheduling.
+				
+				try {
+				  					
+					int count;					
+					while ( (count =  channel.read(inputSocketBuffer)) > 0 ) {
+						
+						//TODO: A, parse it  
+						//TODO: A, if not all read keep buffer and try again later for the rest.
+						//TODO: A, upon any error in bytes disconnect
+						//TODO: A,  if ack then release published messages from queue.
+						//          NOTE: all QOS of zero will need tobe skipped so we could use qos of -1 and -2 to indicate ack.
+						//TODO: A, send ack up to api
+						
+					}
+					//if this returns 0 then there was nothing to read and nothign to do, only works in non blocking mode.
+					
+							  
+										
+					
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				
+				
+				
+			}
+	
+			//channel.
+			//TODO: A, need to check if we want to use selectors or a lower level approach
+			
+			
+		}
+		
+		
 		
 		if (RingReader.tryReadFragment(apiIn)) {
 			switch (RingReader.getMsgIdx(apiIn)) {
 			
-				case ConInConst.MSG_CONNECT:
-			
-					//Use message size to derive release bounds etc
-					//allocate one array of packetIds to remember which have come back.
-					//2 bytes for each would fit 4K in 8K block so at that point the bit mask would be better for up to 64K flight
-					//if no swap over then 64K in flight would be 128K of memory.
+				case ConInConst.MSG_CONNECT:			
+					
+					
+					
+					//TODO: A, need new method
+					//if (!RingReader.isEqual(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL,host));
 										
-					
-					//Keep array the size of in flight, which can not be changed at runtime.
-					// probability says the one we expect is the one that will arrive
-					// so liniarly check each in probability order.
-					//very little storage for small in flight values
-					//all 
-					
-					//Algo:
-					//  if ack is on end of queue then release message
-					//         else add value to seen list
-					//  upon release
-					//     check seen list for match 
-					//     if match found release that one
-					//     set value to -1 but move count if at the end 
-					
-					//upon "release" must store an int and a long for release later.
-					
-					
-					SocketFactory sslsocketfactory = SocketFactory.getDefault();
-				//    create socket and connect when we get the connect message		
-					SSLSocket sslsocket;
-					try {
-						sslsocket = (SSLSocket) sslsocketfactory .createSocket("localhost", 9999);
-						SelectableChannel channel = sslsocket.getChannel().configureBlocking(false);
-						//is this peformant?
-					//	channel.
-						
-						
-						
-					} catch (UnknownHostException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-					      
-					
+					//this is only for a new connection as defined from the api
+					commonBuilder.setLength(0);
+					host = RingReader.readASCII(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, commonBuilder).toString();										
+					state = 1; //in the connection process
+					connect();
+					state = 2; //up and ready
 					
 					break;
 				case ConInConst.MSG_DISCONNECT:
+					if (state !=0 && channel.isOpen()) {
+						try {
+							channel.close();
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+					}
+					state = 0; //TODO: once defined these states need to be static constants
 					
 					
 					break;
 				case ConInConst.MSG_PUBLISH:
+					
+					if (state!=2) {
+						//TODO: A, caller error, connection should have been sent first
+						
+					}
+					if (!channel.isOpen()) {
+						//TODO: A, network error expected this to be open already
+						connect();
+						
+						if (!channel.isOpen()) {
+							return;//try again later
+							
+						}
+						
+					}
+					
+					int qos = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
+					
+					
 					
 					
 					//publish message to connection from the input queue
@@ -158,6 +200,32 @@ public class ConnectionStage extends PronghornStage {
 			}
 		}
 		
+	}
+
+
+
+	private void connect() {
+		int port = 1830;//TODO: AA, check this 
+		
+		//Note this connection message can also be kicked off because the expected state is connected and the connection was lost.
+		//    create socket and connect when we get the connect message		
+		try {
+			SocketFactory sslsocketfactory = SocketFactory.getDefault();
+			SSLSocket sslsocket = (SSLSocket) sslsocketfactory .createSocket(host, port);
+			channel = (SocketChannel)sslsocket.getChannel().configureBlocking(false); 
+			assert(!channel.isBlocking()) : "Blocking must be turned off for all socket connections";
+			
+			
+		} catch (UnknownHostException e) {
+			// TODO: A, must determine what should be done with errors
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO: A, must determine what should be done with errors
+			e.printStackTrace();
+		}
+		
+		///Other connect activities
+		//TODO: A, replay the unconfirmed messages still held in the queue.
 	}
 
 }
