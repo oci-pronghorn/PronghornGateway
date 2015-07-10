@@ -17,7 +17,34 @@ public class PronghornGateway {
 		
 		StageScheduler scheduler = new ThreadPerStageScheduler(gm);
 		scheduler.startup();
+		
+		try {
+			Thread.sleep(500);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		//zulu 8
+		//20.9,  total heap MB 1.5  .5 free
+		
+		//oracle 7
+		//20     total heap MB 6.8   4.7 free
+		//oracle 8
+		//23.6   total heap MB 1.5   .2 free 
+		
 		scheduler.shutdown();
+		
+		System.err.println("total:"+ Runtime.getRuntime().totalMemory());
+		System.err.println("max:"+ Runtime.getRuntime().maxMemory());
+		System.err.println("free:"+ Runtime.getRuntime().freeMemory());
+		
+		try {
+			Thread.sleep(20000);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 		scheduler.awaitTermination(10, TimeUnit.MILLISECONDS);
 		
 		// TODO Auto-generated method stub

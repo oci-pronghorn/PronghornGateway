@@ -30,6 +30,15 @@ public class ConnectionStage extends PronghornStage {
 	 private byte state; //0 disconnected
 	 private ByteBuffer inputSocketBuffer;
 	 
+	 // must be divisable by 4 and >=4 to evenly fit all the packets expected
+	 // the biggest message is also 4 in length so this buffer will support
+	 // parsing of many packets at once as long as its greater than 4.
+	 private final static int INPUT_BUFFER_SIZE = 128;	 
+	 static {
+		 assert(INPUT_BUFFER_SIZE>=4) : "Must be >= 4";
+		 assert(0==(INPUT_BUFFER_SIZE&0x3)) : "Must be divisable by 4";
+	 }
+	 
 	//startup server
 	//      java -Djavax.net.ssl.keyStore=mySrvKeystore -Djavax.net.ssl.keyStorePassword=123456 ServerApp
 	//      
@@ -39,6 +48,9 @@ public class ConnectionStage extends PronghornStage {
 			
 	//      //debug
 	//      -Djava.protocol.handler.pkgs=com.sun.net.ssl.internal.www.protocol -Djavax.net.debug=ssl
+	 
+	 //TCP/IP port 1883 is reserved with IANA for use with MQTT. 
+	 //TCP/IP port 8883 is also registered, for using MQTT over SSL.
 	 
 
 	protected ConnectionStage(GraphManager graphManager, RingBuffer apiIn,  RingBuffer timeIn, 
@@ -54,7 +66,6 @@ public class ConnectionStage extends PronghornStage {
 		this.idGenOut = idGenOut;   //use low level api, only 1 message type
 		
 		this.inFlightLimit = 10;//TODO: Needs to be configured 
-
 		
 	}
 
@@ -100,15 +111,18 @@ public class ConnectionStage extends PronghornStage {
 				
 				try {
 				  					
-					int count;					
-					while ( (count =  channel.read(inputSocketBuffer)) > 0 ) {
+					int count;
+					
+					while ( (count = channel.read(inputSocketBuffer)  ) > 0 ) {
+						//we found some new data what to do with it
+									
+									
+						assert(inputSocketBuffer.position()>0) : "If count was positive we should have had a value here in the buffer";
+						inputSocketBuffer.flip(); //start reading from zero
 						
-						//TODO: A, parse it  
-						//TODO: A, if not all read keep buffer and try again later for the rest.
-						//TODO: A, upon any error in bytes disconnect
-						//TODO: A,  if ack then release published messages from queue.
-						//          NOTE: all QOS of zero will need tobe skipped so we could use qos of -1 and -2 to indicate ack.
-						//TODO: A, send ack up to api
+						parseData();
+												
+						//TODO: do we unflip the remaining data?
 						
 					}
 					//if this returns 0 then there was nothing to read and nothign to do, only works in non blocking mode.
@@ -131,6 +145,16 @@ public class ConnectionStage extends PronghornStage {
 			
 		}
 		
+		//PINTREQ - geneate send
+		//0xC0  type/reserved
+		//0x00 remaining length 0
+		
+		
+		//PUBCOMP - generate send
+		//0x70 type/reserved
+		//0x02 remaining length
+		//MSB PacketID high
+		//LSB PacketID low
 		
 		
 		if (RingReader.tryReadFragment(apiIn)) {
@@ -199,6 +223,95 @@ public class ConnectionStage extends PronghornStage {
 			
 			}
 		}
+		
+	}
+
+
+
+	private void parseData() {
+		//we only expect 4 different packet types so this makes a nice conditional tree
+		final int packetType = inputSocketBuffer.get();						
+		final int length = inputSocketBuffer.get(); //TODO: what if we have no more to read here??
+		if (0 == (0xAF & packetType)) { 
+			//1010 1111 mask for PUBACK 0100 0000 or PUBREC 0101 0000
+			//second byte must always be 2 (the number of remaining bytes in the packet)
+			if ((2 != length) || (0 == (0x40 & packetType) ) ) {
+				//TODO: ERROR, this packet has the wrong bits turned on.
+				
+				
+			}
+			
+			final int msb = inputSocketBuffer.get();						
+			final int lsb = inputSocketBuffer.get();
+			//This is needed for both QoS 1 and 2
+			releaseMessage((msb << 16) | (0xFF & lsb));
+			
+		
+			//NOTE: PUBACK does not need any further work
+			//        PUBACK - ack from our publish of a QOS 1 message
+			//        0x40 type/reserved    0100 0000
+			//        0x02 remaining length
+			//        MSB PacketID high
+			//        LSB PacketID low
+										
+			
+			if (0!=(0x10&packetType)) {								
+				//NOTE: In addition to release PubRec must send back PUBCOMP
+				//        PUBREC - ack from our publish of a QOS 2 message
+				//        0x50 type/reserved    0101 0000
+				//        0x02 remaining length
+				//        MSB PacketID high
+				//        LSB PacketID low
+				
+				
+				//TODO: send PUBCOMP
+			
+				
+			}
+			
+			
+		} else {
+		    
+			//did not pass mask so this is CONNACK 0010 0000 or PINGRESP 1101 0000
+			if (0==(0x80 & packetType)) {								
+				//CONNACK - ack from our request to connect
+				// 0x20 type/reserved   0010 0000
+				// 0x02 remaining length
+				// 0x01 reserved with low session present bit
+				// 0x?? connection return code 0 ok, 1 bad proto, 2, bad id 3 no server 4 bad userpass 5 not auth  6-255 reserved
+				if ((2!=length) || (0x20 != packetType)) {
+					//TODO: ERROR
+			
+					
+				}
+				
+				final int sessionPresent       = inputSocketBuffer.get();						
+				final int connectionReturnCode = inputSocketBuffer.get();
+				
+				//TODO: turn on the connection or report issue from message.
+				
+			} else {
+				//PINGRESP - ack from our ping request
+				//0xD0  type//reserved  1101 0000
+				//0x00  remaining length 0
+				if ((0!=length) || (0xD0 != packetType)) {
+					//TODO: ERROR
+					
+					
+				}
+				
+				
+				//TODO: what do do with ping response?
+				
+			}
+			
+		}
+	}
+
+
+
+	private void releaseMessage(int packetId) {
+		// TODO Auto-generated method stub
 		
 	}
 
