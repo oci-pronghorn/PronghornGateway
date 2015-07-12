@@ -17,7 +17,7 @@ public class ValidGraphConstruction {
 		//This test may not be needed in the future with the graph if generated directly from the DOT file.
 		
 		GraphManager gm = new GraphManager();		
-		ClientAPIFactory.clientAPI(gm);
+		ClientAPIFactory.clientAPI(DemoStageFactory.instance, gm);
 		
 		assertEquals("API and IdGen should be the only producers",2, gm.countStagesWithAnnotationKey(gm, GraphManager.PRODUCER));
 		
@@ -29,10 +29,10 @@ public class ValidGraphConstruction {
 			if (null ==	GraphManager.getAnnotation(gm, stage, GraphManager.MONITOR, null)) {
 				if (stage instanceof ConnectionStage) {
 					
-					assertEquals("from API to Connection ",APIStage.class, GraphManager.getRingProducer(gm, GraphManager.getInputPipe(gm, stage, 1).ringId).getClass());
+					assertEquals("from API to Connection ",DemoStage.class, GraphManager.getRingProducer(gm, GraphManager.getInputPipe(gm, stage, 1).ringId).getClass());
 					assertEquals("from TimeKeeper to Connection ",TimeKeeperStage.class, GraphManager.getRingProducer(gm, GraphManager.getInputPipe(gm, stage, 2).ringId).getClass());
 					
-					assertEquals("from Connection to API ",APIStage.class, GraphManager.getRingConsumer(gm, GraphManager.getOutputPipe(gm, stage, 1).ringId).getClass());
+					assertEquals("from Connection to API ",DemoStage.class, GraphManager.getRingConsumer(gm, GraphManager.getOutputPipe(gm, stage, 1).ringId).getClass());
 					assertEquals("from Connection to TimeKeeper ",TimeKeeperStage.class, GraphManager.getRingConsumer(gm, GraphManager.getOutputPipe(gm, stage, 2).ringId).getClass());
 					assertEquals("from Connection to IdGen ",IdGenStage.class, GraphManager.getRingConsumer(gm, GraphManager.getOutputPipe(gm, stage, 3).ringId).getClass());
 															
@@ -50,7 +50,7 @@ public class ValidGraphConstruction {
 				} else if (stage instanceof IdGenStage) {
 					
 					assertEquals("from Connection to IdGen ",ConnectionStage.class, GraphManager.getRingProducer(gm, GraphManager.getInputPipe(gm, stage, 1).ringId).getClass());
-					assertEquals("from IdGen to API ",APIStage.class, GraphManager.getRingConsumer(gm, GraphManager.getOutputPipe(gm, stage, 1).ringId).getClass());
+					assertEquals("from IdGen to API ",DemoStage.class, GraphManager.getRingConsumer(gm, GraphManager.getOutputPipe(gm, stage, 1).ringId).getClass());
 					
 				} else {
 					fail("Unknown stage :"+stage.getClass().getSimpleName());

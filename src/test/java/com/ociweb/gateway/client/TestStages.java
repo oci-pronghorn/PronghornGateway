@@ -62,7 +62,7 @@ public class TestStages {
 	@Test
 	public void testStagesExpectedUseCase() throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
 		GraphManager gm = new GraphManager();		
-		ClientAPIFactory.clientAPI(gm);
+		ClientAPIFactory.clientAPI(DemoStageFactory.instance, gm);
 		
 		//we do not know which id will be given to which stage so walk them all and do the right test for each
 		int stageId = PronghornStage.totalStages();
@@ -99,7 +99,7 @@ public class TestStages {
 	@Test
 	public void testStagesFuzz() throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
 		GraphManager gm = new GraphManager();		
-		ClientAPIFactory.clientAPI(gm);
+		ClientAPIFactory.clientAPI(DemoStageFactory.instance, gm);
 		
 		//  
 		

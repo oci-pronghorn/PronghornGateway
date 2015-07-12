@@ -1,6 +1,6 @@
 package com.ociweb.gateway.client;
 
-import java.util.concurrent.TimeUnit;
+import java.lang.reflect.Constructor;
 
 import com.ociweb.gateway.common.CommonFromFactory;
 import com.ociweb.gateway.common.IdGenStage;
@@ -8,18 +8,15 @@ import com.ociweb.gateway.common.TimeKeeperStage;
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.ring.RingBufferConfig;
 import com.ociweb.pronghorn.stage.monitor.MonitorConsoleStage;
-import com.ociweb.pronghorn.stage.monitor.MonitorFROM;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
-import com.ociweb.pronghorn.stage.scheduling.StageScheduler;
-import com.ociweb.pronghorn.stage.scheduling.ThreadPerStageScheduler;
 
 public class ClientAPIFactory {
 
-	public static APIStage clientAPI() {
-		return clientAPI(new GraphManager());
+	public static APIStage clientAPI(APIStageFactory factory) {
+		return clientAPI(factory, new GraphManager());
 	}
 	
-	public static APIStage clientAPI(GraphManager gm) {
+	public static APIStage clientAPI(APIStageFactory factory, GraphManager gm) {
 		int queuedIds = 3;
 		int queuedTimeControl = 2;
 		int queuedTimeTrigger = 2;
@@ -27,7 +24,7 @@ public class ClientAPIFactory {
 		int queuedConOut = 2;
 		int maxTopicOrPayload = 16;
 		
-		APIStage result = buildInstance(gm, 
+		APIStage result = buildInstance(factory, gm, 
 				            queuedIds, queuedTimeControl, queuedTimeTrigger, queuedConIn,
 				            queuedConOut, maxTopicOrPayload);
 		
@@ -40,7 +37,7 @@ public class ClientAPIFactory {
 	}
 
 	//NOTE: this will be generated from the DOT file in future projects, this is here as an example.
-	private static APIStage buildInstance(GraphManager gm, int queuedIds, int queuedTimeControl, int queuedTimeTrigger, int queuedConIn, int queuedConOut, int maxTopicOrPayload) {
+	private static APIStage buildInstance(APIStageFactory factory, GraphManager gm, int queuedIds, int queuedTimeControl, int queuedTimeTrigger, int queuedConIn, int queuedConOut, int maxTopicOrPayload) {
 		RingBufferConfig idGenConfig = new RingBufferConfig(CommonFromFactory.idRangesFROM, queuedIds, 0);
 		RingBufferConfig timeControlConfig = new RingBufferConfig(CommonFromFactory.timeControlFROM, queuedTimeControl, 0);
 		RingBufferConfig timeTriggerConfig = new RingBufferConfig(CommonFromFactory.timeTriggerFROM, queuedTimeTrigger, 0);			
@@ -58,8 +55,7 @@ public class ClientAPIFactory {
 		//these instances are all held by the graph which is passed in	
 		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, new IdGenStage(gm, releasedIds, unusedIds));
 		
-		//TODO: AA, must find way to pass in constructor for one of these instances. businessFactory instance may work best. may need clone method with same config but new pipes.
-		APIStage apiStage = new APIStage(gm, unusedIds, connectionOut, connectionIn);
+		APIStage apiStage = factory.newInstance(gm, unusedIds, connectionOut, connectionIn);
 		
 		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, apiStage);
 		

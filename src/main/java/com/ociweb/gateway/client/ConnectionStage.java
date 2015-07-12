@@ -49,8 +49,8 @@ public class ConnectionStage extends PronghornStage {
 	//      //debug
 	//      -Djava.protocol.handler.pkgs=com.sun.net.ssl.internal.www.protocol -Djavax.net.debug=ssl
 	 
-	 //TCP/IP port 1883 is reserved with IANA for use with MQTT. 
-	 //TCP/IP port 8883 is also registered, for using MQTT over SSL.
+	//TCP/IP port 1883 is reserved with IANA for use with MQTT. 
+	//TCP/IP port 8883 is also registered, for using MQTT over SSL.
 	 
 
 	protected ConnectionStage(GraphManager graphManager, RingBuffer apiIn,  RingBuffer timeIn, 
@@ -97,30 +97,26 @@ public class ConnectionStage extends PronghornStage {
 		//read input from socket and if data is found
 		if (state==2) {
 			if (!channel.isOpen()) {
-				//TODO: A, network error expected this to be open already
+				
 				connect();
 				
 				if (!channel.isOpen()) {
-					return;//try again later
-					
+					return;//try again later, unable to connect right now					
 				}
-				
-				//can not use selectors becauase
-				//   1. they create a lot of garbage
-				//   2. they get in the way of my own business specific scheduling.
 				
 				try {
 				  					
-					int count;
-					
+					int count;					
 					while ( (count = channel.read(inputSocketBuffer)  ) > 0 ) {
 						//we found some new data what to do with it
-									
-									
+																		
 						assert(inputSocketBuffer.position()>0) : "If count was positive we should have had a value here in the buffer";
 						inputSocketBuffer.flip(); //start reading from zero
 						
-						parseData();
+						if (!parseData()) {
+							//parse found an error and dropped the connection
+							return;
+						}
 												
 						//TODO: do we unflip the remaining data?
 						
@@ -226,9 +222,12 @@ public class ConnectionStage extends PronghornStage {
 		
 	}
 
+	//TODO: send disconnect  0xE0 0x00
+	//TLS     socket 8883
+	//non-tls socket 1883
 
 
-	private void parseData() {
+	private boolean parseData() {
 		//we only expect 4 different packet types so this makes a nice conditional tree
 		final int packetType = inputSocketBuffer.get();						
 		final int length = inputSocketBuffer.get(); //TODO: what if we have no more to read here??
@@ -236,9 +235,8 @@ public class ConnectionStage extends PronghornStage {
 			//1010 1111 mask for PUBACK 0100 0000 or PUBREC 0101 0000
 			//second byte must always be 2 (the number of remaining bytes in the packet)
 			if ((2 != length) || (0 == (0x40 & packetType) ) ) {
-				//TODO: ERROR, this packet has the wrong bits turned on.
-				
-				
+				dropConnection();
+				return false;
 			}
 			
 			final int msb = inputSocketBuffer.get();						
@@ -264,7 +262,17 @@ public class ConnectionStage extends PronghornStage {
 				//        LSB PacketID low
 				
 				
-				//TODO: send PUBCOMP
+				//TODO: send PUBREL
+				//0x62  type/reserved   0110 0010
+				//0x02  remaining length
+				//MSB PacketID high
+				//LSB PacketID low
+				
+				//PUBCOMP  PARSE
+				//0x70  type/reerved 0111 0000
+				//0x02  remaining length
+				// MSB PacketID high
+				// LSB PacketID low
 			
 				
 			}
@@ -280,9 +288,8 @@ public class ConnectionStage extends PronghornStage {
 				// 0x01 reserved with low session present bit
 				// 0x?? connection return code 0 ok, 1 bad proto, 2, bad id 3 no server 4 bad userpass 5 not auth  6-255 reserved
 				if ((2!=length) || (0x20 != packetType)) {
-					//TODO: ERROR
-			
-					
+					dropConnection();
+					return false;
 				}
 				
 				final int sessionPresent       = inputSocketBuffer.get();						
@@ -295,17 +302,32 @@ public class ConnectionStage extends PronghornStage {
 				//0xD0  type//reserved  1101 0000
 				//0x00  remaining length 0
 				if ((0!=length) || (0xD0 != packetType)) {
-					//TODO: ERROR
-					
-					
+					dropConnection();
+					return false;
 				}
-				
-				
-				//TODO: what do do with ping response?
-				
+				processPingResponse();
 			}
 			
 		}
+		return true;
+	}
+
+//PINGREQ (two bytes)
+	//0xC0  type/reserved 1100 0000
+	//0x00   remaining length
+
+	private void processPingResponse() {
+		
+		//TODO: clear the flag that was set when we sent the ping
+		
+		
+	}
+
+
+
+	private void dropConnection() {
+		// TODO Auto-generated method stub
+		
 	}
 
 

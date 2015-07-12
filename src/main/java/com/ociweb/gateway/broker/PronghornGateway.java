@@ -4,6 +4,8 @@ import java.util.concurrent.TimeUnit;
 
 import com.ociweb.gateway.client.APIStage;
 import com.ociweb.gateway.client.ClientAPIFactory;
+import com.ociweb.gateway.client.DemoStage;
+import com.ociweb.gateway.client.DemoStageFactory;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 import com.ociweb.pronghorn.stage.scheduling.StageScheduler;
 import com.ociweb.pronghorn.stage.scheduling.ThreadPerStageScheduler;
@@ -13,7 +15,7 @@ public class PronghornGateway {
 	public static void main(String[] args) {
 		
 		GraphManager gm = new GraphManager();
-		APIStage stage = ClientAPIFactory.clientAPI(gm);
+		APIStage stage = ClientAPIFactory.clientAPI(DemoStageFactory.instance, gm);
 		
 		StageScheduler scheduler = new ThreadPerStageScheduler(gm);
 		scheduler.startup();
@@ -25,13 +27,6 @@ public class PronghornGateway {
 			e.printStackTrace();
 		}
 		
-		//zulu 8
-		//20.9,  total heap MB 1.5  .5 free
-		
-		//oracle 7
-		//20     total heap MB 6.8   4.7 free
-		//oracle 8
-		//23.6   total heap MB 1.5   .2 free 
 		
 		scheduler.shutdown();
 		

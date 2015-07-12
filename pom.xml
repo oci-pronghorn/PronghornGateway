@@ -24,15 +24,7 @@
   </properties>
   
     <dependencies>
-    		
-      	<dependency>
-	      <groupId>junit</groupId>
-	      <artifactId>junit</artifactId>
-	      <version>4.12</version>
-	  	  <type>jar</type>
-	  	  <scope>test</scope>
-		  <optional>false</optional>
-		</dependency>
+
 		<dependency>
 	  		<groupId>com.ociweb</groupId>
 	  		<artifactId>Pronghorn</artifactId>
@@ -50,9 +42,43 @@
           <scope>runtime</scope>
         </dependency>   
 
+    		
+      	<dependency>
+		      <groupId>junit</groupId>
+		      <artifactId>junit</artifactId>
+		      <version>4.12</version>
+		  	  <type>jar</type>
+		  	  <scope>test</scope>
+			  <optional>false</optional>
+		</dependency>
+		<dependency>
+		      <groupId>org.eclipse.moquette</groupId>
+		      <artifactId>moquette-broker</artifactId>
+		      <version>0.7</version>
+		      <scope>test</scope>
+		</dependency>
+        <dependency>
+	          <groupId>org.eclipse.paho</groupId>
+	          <artifactId>mqtt-client</artifactId>
+	          <version>0.4.0</version>
+	           <scope>test</scope>
+        </dependency>
+        
 	</dependencies>
 	
+	
   <repositories>
+
+  <repository>
+    <id>bintray</id>
+    <url>http://dl.bintray.com/andsel/maven/</url>
+    <releases>
+      <enabled>true</enabled>
+    </releases>
+    <snapshots>
+      <enabled>false</enabled>
+    </snapshots>
+  </repository>
 
     <repository>
       <releases>
@@ -153,10 +179,17 @@
         </executions>
         <configuration>
           <options>
-            <option>-keep public class com.ociweb.gateway.**</option>
+            <!--  >option>-keep class com.ociweb.**</option -->
+            <option>-keep public class com.ociweb.gateway.broker.PronghornGateway {
+			    public static void main(java.lang.String[]);
+			}</option>
             <!--  option>-dontobfuscate</option -->
-            <option>-dontpreverify</option>
+            
+            <!--  >option>-optimizationpasses 3</option -->
+            <option>-allowaccessmodification</option>
+			<option>-overloadaggressively</option>
           </options>
+          <obfuscate>true</obfuscate>
           <libs>
             <lib>${java.bootstrap.classes}</lib>
             <lib>${java.cryptographic.extension.classes}</lib>

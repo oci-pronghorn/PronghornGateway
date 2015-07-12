@@ -42,7 +42,7 @@ public class ConInConst {
 		//TODO: move this block to test to confirm the constants.
 		MSG_CON_IN_PUBLISH     = lookupTemplateLocator("Publish",fromToCon);  
 		MSG_CON_IN_CONNECT     = lookupTemplateLocator("Connect",fromToCon);  
-		MSG_CON_IN_DISCONNECT  = lookupTemplateLocator("Disconnect",fromToCon);  
+		MSG_CON_IN_DISCONNECT  = lookupTemplateLocator("Disconnect",fromToCon);  //Should there be packet data? its only 2 bytes 0xE0, 0x00
 		MSG_CON_IN_SUBSCRIBE   = lookupTemplateLocator("Subscribe",fromToCon);  
 		MSG_CON_IN_UNSUBSCRIBE = lookupTemplateLocator("UnSubscribe",fromToCon);  
 		MSG_CON_IN_PUB_ACK     = lookupTemplateLocator("PubAck",fromToCon);  
