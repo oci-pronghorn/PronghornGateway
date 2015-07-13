@@ -2,6 +2,7 @@ package com.ociweb.gateway.client;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 import org.eclipse.moquette.server.Server;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
@@ -11,12 +12,56 @@ import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.junit.BeforeClass;
+import org.junit.Test;
 
+import com.ociweb.gateway.client.IntegrationTest.IntegrationTestConnectDisconnector;
+import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.ring.RingWriter;
+import com.ociweb.pronghorn.stage.scheduling.GraphManager;
+import com.ociweb.pronghorn.stage.scheduling.StageScheduler;
+import com.ociweb.pronghorn.stage.scheduling.ThreadPerStageScheduler;
 
 import static org.junit.Assert.*;
 
 public class IntegrationTest {
+
+	public class IntegrationTestConnectDisconnector extends APIStage {
+
+		private int iterations;
+		
+		public IntegrationTestConnectDisconnector(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut,
+				RingBuffer connectionIn, int iterations) {
+			super(gm,unusedIds,connectionOut,connectionIn);
+			this.iterations = iterations;
+		}
+
+		@Override
+		public void businessLogic() {
+			
+			if (--iterations>=0) {
+				CharSequence url = "127.0.0.1";
+				int conFlags = MQTTEncoder.CONNECT_FLAG_CLEAN_SESSION_1;
+				
+				byte[] empty = new byte[0];
+				
+				byte[] willTopic = empty;
+				byte[] willMessageBytes = empty;
+				byte[] username = empty;
+				byte[] passwordBytes = empty;
+				
+				requestConnect(url, conFlags, willTopic, willMessageBytes, username, passwordBytes);
+							
+				requestDisconnect();
+							
+			} else {
+				requestShutdown();
+			}
+			
+		}		
+		
+		
+	}
+
 
 	@BeforeClass
 	public static void setup() {
@@ -78,13 +123,41 @@ public class IntegrationTest {
 	}
 
 
-
-	public void testPubliser() {
+    @Test		
+	public void testConnectDisconnect() {
 		//for this test we will use a known working broker and known working subscriber (both from eclipse)
 		//we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.
 		
+    	final int testSize = 5;
+    	
+		GraphManager gm = new GraphManager();
+		APIStageFactory factory = new APIStageFactory() {
+
+			@Override
+			public APIStage newInstance(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn) {
+				return new IntegrationTestConnectDisconnector(gm, unusedIds, connectionOut, connectionIn, testSize);
+			}
+			
+		};
+		ClientAPIFactory.clientAPI(factory ,gm); //TODO:: Make own stage and in run measure to send value.
+		
+	    StageScheduler scheduler = new ThreadPerStageScheduler(gm);
+        scheduler.startup();
+        scheduler.awaitTermination(10, TimeUnit.SECONDS);
+		
+        //TODO: need to confirm count of connections.
+       
+       
+		
 		
 	}
+	
+	
+	//then test publish QoS 0
+	
+	//then test publish QoS 1
+	
+	//then test publish QoS 2
 	
 	
 	

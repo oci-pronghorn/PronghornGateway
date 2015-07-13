@@ -86,13 +86,13 @@ public class MQTTEncoder {
 		}
 		
 		//total length is needed to close out this var length field in the queue
-		return firstPos-bytePos;
+		return bytePos-firstPos;
 	}
 	
 	
 	private static int appendFixedHeader(int bytePos, int byteMask, byte[] byteBuffer, int leadingByte, int length) {
 		
-		byteBuffer[bytePos++] = (byte)(0xFF&leadingByte);
+		byteBuffer[byteMask&bytePos++] = (byte)(0xFF&leadingByte);
 		return encodeVarLength(byteBuffer,bytePos,byteMask,length);
 		
 	}
@@ -113,24 +113,24 @@ public class MQTTEncoder {
 	
 	private static int appendFixedProtoName(int bytePos, int byteMask, byte[] byteBuffer) {
 		//NOTE: this is hardcoded from 3.1.1 spec and may not be compatible with 3.1
-		byteBuffer[bytePos++] = 0; //MSB
-		byteBuffer[bytePos++] = 4; //LSB
-		byteBuffer[bytePos++] = 'M';
-		byteBuffer[bytePos++] = 'Q';
-		byteBuffer[bytePos++] = 'T';
-		byteBuffer[bytePos++] = 'T';
+		byteBuffer[byteMask&bytePos++] = 0; //MSB
+		byteBuffer[byteMask&bytePos++] = 4; //LSB
+		byteBuffer[byteMask&bytePos++] = 'M';
+		byteBuffer[byteMask&bytePos++] = 'Q';
+		byteBuffer[byteMask&bytePos++] = 'T';
+		byteBuffer[byteMask&bytePos++] = 'T';
 		
 		return bytePos;
 	}
 
 	private static int appendByte(int bytePos, int byteMask, byte[] byteBuffer, int value) {
-		byteBuffer[bytePos++] = (byte)value;
+		byteBuffer[byteMask&bytePos++] = (byte)value;
 		return bytePos;
 	}
 
 	private static int appendShort(int bytePos, int byteMask, byte[] byteBuffer, int value) {
-		byteBuffer[bytePos++] = (byte)(0xFF&(value>>8));
-		byteBuffer[bytePos++] = (byte)(0xFF&value);
+		byteBuffer[byteMask&bytePos++] = (byte)(0xFF&(value>>8));
+		byteBuffer[byteMask&bytePos++] = (byte)(0xFF&value);
 		return bytePos;
 	}
 

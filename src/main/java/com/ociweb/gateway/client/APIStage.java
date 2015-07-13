@@ -87,6 +87,7 @@ public class APIStage extends PronghornStage {
 					                                 willMessageBytes, 0, willMessageBytes.length, 0xFFFF,
 					                                 username, 0, username.length, 0xFFFF,
 					                                 passwordBytes, 0, passwordBytes.length, 0xFFFF);
+			assert(len>0);
 			RingWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA, len, bytePos);
 					
 			RingWriter.publishWrites(toCon);
