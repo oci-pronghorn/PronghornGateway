@@ -1,27 +1,19 @@
 package com.ociweb.gateway.client;
 
+import static org.junit.Assert.fail;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 import org.eclipse.moquette.server.Server;
-import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
-import org.eclipse.paho.client.mqttv3.MqttCallback;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttException;
-import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import com.ociweb.gateway.client.IntegrationTest.IntegrationTestConnectDisconnector;
 import com.ociweb.pronghorn.ring.RingBuffer;
-import com.ociweb.pronghorn.ring.RingWriter;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 import com.ociweb.pronghorn.stage.scheduling.StageScheduler;
 import com.ociweb.pronghorn.stage.scheduling.ThreadPerStageScheduler;
-
-import static org.junit.Assert.*;
 
 public class IntegrationTest {
 
@@ -67,7 +59,7 @@ public class IntegrationTest {
 	public static void setup() {
 		try {
 			startBroker();
-			startSubsriber();
+		//	startSubsriber();
 		} catch (Exception e) {
 			
 			e.printStackTrace();
@@ -77,50 +69,50 @@ public class IntegrationTest {
 	
 	
 	
-	private static void startSubsriber() throws MqttException {
-		MqttClient client = new MqttClient("tcp://localhost:1883", "TestClient", new MemoryPersistence());
-		
-		MqttCallback callback = new MqttCallback() {
-
-			@Override
-			public void connectionLost(Throwable cause) {
-				cause.printStackTrace();
-				fail();
-			}
-
-			@Override
-			public void messageArrived(String topic, MqttMessage message) throws Exception {
-				
-				//TODO: write to ring so the values can be checked in the test code.
-				
-//				int metaMask = ((QOS_MASK & message.getQos()) << QOS_SHIFT) |
-//					       ((message.isRetained() ? 1 : 0) << RET_SHIFT) |
-//					       ((message.isDuplicate() ? 1 : 0) << DUP_SHIFT);
-//			
-//			byte[] payload = message.getPayload();
-//			
-//			
-//			RingWriter.blockWriteFragment(outputRing, MSG_MQTT);
-//			
-//			RingWriter.writeASCII(outputRing, FIELD_TOPIC, topic);
-//			RingWriter.writeBytes(outputRing, FIELD_PAYLOAD, payload);
-//			RingWriter.writeInt(outputRing, FIELD_META_MASK, metaMask);
-//			
-//			RingWriter.publishWrites(outputRing);
-			}
-
-			@Override
-			public void deliveryComplete(IMqttDeliveryToken token) {
-				System.err.println("should not be called for subscriber");
-				System.err.println(token);
-				fail();
-				
-			}};
-		client.setCallback(callback);
-		
-		client.connect();
-		client.subscribe("#", 2);
-	}
+//	private static void startSubsriber() throws MqttException {
+//		MqttClient client = new MqttClient("tcp://localhost:1883", "TestClient", new MemoryPersistence());
+//		
+//		MqttCallback callback = new MqttCallback() {
+//
+//			@Override
+//			public void connectionLost(Throwable cause) {
+//				cause.printStackTrace();
+//				fail();
+//			}
+//
+//			@Override
+//			public void messageArrived(String topic, MqttMessage message) throws Exception {
+//				
+//				//TODO: write to ring so the values can be checked in the test code.
+//				
+////				int metaMask = ((QOS_MASK & message.getQos()) << QOS_SHIFT) |
+////					       ((message.isRetained() ? 1 : 0) << RET_SHIFT) |
+////					       ((message.isDuplicate() ? 1 : 0) << DUP_SHIFT);
+////			
+////			byte[] payload = message.getPayload();
+////			
+////			
+////			RingWriter.blockWriteFragment(outputRing, MSG_MQTT);
+////			
+////			RingWriter.writeASCII(outputRing, FIELD_TOPIC, topic);
+////			RingWriter.writeBytes(outputRing, FIELD_PAYLOAD, payload);
+////			RingWriter.writeInt(outputRing, FIELD_META_MASK, metaMask);
+////			
+////			RingWriter.publishWrites(outputRing);
+//			}
+//
+//			@Override
+//			public void deliveryComplete(IMqttDeliveryToken token) {
+//				System.err.println("should not be called for subscriber");
+//				System.err.println(token);
+//				fail();
+//				
+//			}};
+//		client.setCallback(callback);
+//		
+//		client.connect();
+//		client.subscribe("#", 2);
+//	}
 
 
     @Test		

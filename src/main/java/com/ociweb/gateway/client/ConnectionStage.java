@@ -433,22 +433,28 @@ System.err.println("state:"+state);
 		try {
 
 			SocketAddress addr = new InetSocketAddress(host, port); //TODO:AA, must move object create. and replace the holding of host, not needed.
-			
-			SocketChannel localChannel = SocketChannel.open();
-									
+			SocketChannel localChannel = SocketChannel.open();									
 			channel = (SocketChannel)localChannel.configureBlocking(false); 
+			
+			
+			
 			assert(!channel.isBlocking()) : "Blocking must be turned off for all socket connections";
 			System.err.println("xxxx begin connnect");
 			
-			channel.connect(addr);
-			while (!channel.finishConnect()) {
+			channel.connect(addr); //TODO: do this earlier ?
+			
+			
+			while (!channel.finishConnect()) { // TODO: make non blocking
 				
 			};
 			
 			CONNECT_MESSAGE.flip();
+			while (CONNECT_MESSAGE.hasRemaining()) { //TODO: make non blocking
+				channel.write(CONNECT_MESSAGE);
+			}
 			System.err.println("xxxxxx   connection requsted with:"+CONNECT_MESSAGE.remaining());
-			channel.write(CONNECT_MESSAGE);
 			
+			//channel.close();
 
 		} catch (Throwable t) {
 			log.error("Unable to connect", t);
