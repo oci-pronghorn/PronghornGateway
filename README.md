@@ -11,3 +11,8 @@ Please consider getting involved and sponsoring the completion of [PronghornGate
 
 * September - Client publisher/subscriber jar
 * December  - Broker executable jar
+
+
+#Unit tests require Compact Profile 2 or larger Java image
+
+#Runtime only requires compact profile 1

@@ -120,50 +120,45 @@ public class ConnectionStage extends PronghornStage {
 			}
 	
 			if (channel.isOpen()) {
-			try {
-				
-				int count;					
-				while ( (count = channel.read(inputSocketBuffer)  ) > 0 ) {
-					//we found some new data what to do with it
-																	
-					assert(inputSocketBuffer.position()>0) : "If count was positive we should have had a value here in the buffer";
-					inputSocketBuffer.flip(); //start reading from zero
-					
-					System.err.println("xxx reading "+inputSocketBuffer.remaining());
-					
-					if (!parseData()) {
-						//parse found an error and dropped the connection
-						return;
-					}
-									
-					//copy the last 1 or 2 byte back down to bottom of buffer to add on for next time.
-                    //sets up the position for writing again and sets limit to capacity.
-					unflip(inputSocketBuffer);
-					
-				}
-				
-				
-				//if this returns 0 then there was nothing to read and nothign to do, only works in non blocking mode.
+				try {					
+					int count;					
+					while ( (count = channel.read(inputSocketBuffer)  ) > 0 ) {
+						//we found some new data what to do with it
+																		
+						assert(inputSocketBuffer.position()>0) : "If count was positive we should have had a value here in the buffer";
+						inputSocketBuffer.flip(); //start reading from zero
 						
-				
-			} catch (IOException e) {
-				log.error("Unable to parse data",e);
-				return;
-			}
+						System.err.println("hello world");
+						
+						if (!parseData()) {
+							//parse found an error and dropped the connection
+							return;
+						}
+										
+						//copy the last 1 or 2 byte back down to bottom of buffer to add on for next time.
+	                    //sets up the position for writing again and sets limit to capacity.
+						unflip(inputSocketBuffer);
+						
+					}
+					
+					
+					//if this returns 0 then there was nothing to read and nothign to do, only works in non blocking mode.
+							
+					
+				} catch (IOException e) {
+					log.error("Unable to parse data",e);
+					return;
+				}
 			}
 			
 		}
-		
-		if (1!=state) {
-System.err.println("state:"+state);
-		}
+
 		//must be in connected or disconnected state before reading a fragment
 		if (notPendingConnect() &&
 			RingReader.tryReadFragment(apiIn)) {
 			switch (RingReader.getMsgIdx(apiIn)) {
 			
 				case ConInConst.MSG_CON_IN_CONNECT:	
-					System.err.println("xxxxx got conttect request");
 					//set value now so that no more fragments are read before the ack of the connect is recieved.
 					state = 1; //in the connection process
 															
@@ -175,9 +170,24 @@ System.err.println("state:"+state);
 					host = RingReader.readASCII(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, commonBuilder).toString();										
 					
 					CONNECT_MESSAGE.clear();
-					//int len = RingReader.readBytesLength(apiIn, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA);
+					int len = RingReader.readBytesLength(apiIn, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA);
+				
+					System.err.println("connect message len "+len);
+				
 					RingReader.readBytes(apiIn, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA, CONNECT_MESSAGE);
 								
+					CONNECT_MESSAGE.flip();
+					
+					StringBuilder builder = new StringBuilder();
+					StringBuilder builder2 = new StringBuilder();
+					while (CONNECT_MESSAGE.hasRemaining()) {
+						int x = CONNECT_MESSAGE.get();
+						builder.append(x).append(',');
+						builder2.append(Integer.toHexString(x)).append(',');						
+					}
+					System.err.println(builder);
+					System.err.println(builder2);
+					
 					
 					connect();
 										
@@ -332,7 +342,8 @@ System.err.println("state:"+state);
 				
 				
 				if (0==(0x10 & packetType)) {
-										
+					System.err.println("got ack");					
+					
 					//CONNACK - ack from our request to connect
 					// 0x20 type/reserved   0010 0000
 					// 0x02 remaining length
@@ -448,10 +459,22 @@ System.err.println("state:"+state);
 				
 			};
 			
-			CONNECT_MESSAGE.flip();
-			while (CONNECT_MESSAGE.hasRemaining()) { //TODO: make non blocking
-				channel.write(CONNECT_MESSAGE);
-			}
+		//	int x = 100;
+		//	while (--x>=0) {
+			
+			System.err.println("remaining:" + CONNECT_MESSAGE.remaining());
+			//210 bytes for connection message?
+			
+				CONNECT_MESSAGE.flip();
+				
+				
+				
+				while (CONNECT_MESSAGE.hasRemaining()) {
+					//TODO: make non blocking
+					channel.write(CONNECT_MESSAGE);
+				}
+				
+		//	}
 			System.err.println("xxxxxx   connection requsted with:"+CONNECT_MESSAGE.remaining());
 			
 			//channel.close();
