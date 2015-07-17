@@ -42,6 +42,8 @@ public class APIStage extends PronghornStage {
         //this makes testing much easier, it makes integration tighter
         //it may add a copy?
         
+        //must be set so this stage will get shut down and ignore the fact that is has un-consumed messages coming in 
+        GraphManager.addAnnotation(graphManager,GraphManager.PRODUCER, GraphManager.PRODUCER, this);
         
 	}
 	
@@ -51,10 +53,33 @@ public class APIStage extends PronghornStage {
 	public void run() {
 		
 		//loop is for subscribers?
-		while (RingReader.tryReadFragment(fromCon)) {			
+		while (RingReader.tryReadFragment(fromCon)) {	
+			int msgIdx = RingReader.getMsgIdx(fromCon);
+			switch(msgIdx) {
+				case ConOutConst.MSG_CON_OUT_CONNACK_OK:
+					newConnection();
+				break;	
+				case ConOutConst.MSG_CON_OUT_CONNACK_ID:
+				case ConOutConst.MSG_CON_OUT_CONNACK_AUTH:
+				case ConOutConst.MSG_CON_OUT_CONNACK_PROTO:
+				case ConOutConst.MSG_CON_OUT_CONNACK_SERVER:
+				case ConOutConst.MSG_CON_OUT_CONNACK_USER:
+					newConnectionError(msgIdx);
+				break;	
+				default:
+					
+			}
 			RingReader.releaseReadLock(fromCon);		
 		}
 		businessLogic();
+	}
+	
+	public void newConnection() {
+		
+	}
+	
+	public void newConnectionError(int err) {
+		
 	}
 	
 	
@@ -75,6 +100,10 @@ public class APIStage extends PronghornStage {
 	protected boolean requestConnect(CharSequence url, int conFlags, byte[] willTopic, byte[] willMessageBytes, byte[] username, byte[] passwordBytes) {
 
 		if (RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_CONNECT)) {
+			
+		
+			
+			
 			RingWriter.writeASCII(toCon, ConInConst.CON_IN_CONNECT_FIELD_URL, url);
 			
 			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
@@ -89,7 +118,7 @@ public class APIStage extends PronghornStage {
 					                                 passwordBytes, 0, passwordBytes.length, 0xFFFF);
 			assert(len>0);
 			RingWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA, len, bytePos);
-					
+			
 			RingWriter.publishWrites(toCon);
 			return true;
 		} else {

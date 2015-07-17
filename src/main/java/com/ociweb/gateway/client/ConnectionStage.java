@@ -7,6 +7,7 @@ import java.net.SocketAddress;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.util.Arrays;
 
 import javax.net.SocketFactory;
 import javax.net.ssl.SSLSocket;
@@ -17,6 +18,7 @@ import org.slf4j.LoggerFactory;
 
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.ring.RingReader;
+import com.ociweb.pronghorn.ring.RingWriter;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
@@ -37,7 +39,9 @@ public class ConnectionStage extends PronghornStage {
 	 private ByteBuffer inputSocketBuffer;
 	 private ByteBuffer DISCONNECT_MESSAGE;
 	 private ByteBuffer CONNECT_MESSAGE;
-	 
+	 	 
+	 private int[] CON_ACK_MSG;
+		
 	 
 	 private static Logger log = LoggerFactory.getLogger(ConnectionStage.class);
 	 
@@ -89,6 +93,15 @@ public class ConnectionStage extends PronghornStage {
 		DISCONNECT_MESSAGE.put((byte) 0xE0);
 		DISCONNECT_MESSAGE.put((byte) 0x00);
 		
+		CON_ACK_MSG = new int[]{
+                ConOutConst.MSG_CON_OUT_CONNACK_OK,
+				ConOutConst.MSG_CON_OUT_CONNACK_PROTO,
+				ConOutConst.MSG_CON_OUT_CONNACK_ID,
+				ConOutConst.MSG_CON_OUT_CONNACK_SERVER,
+				ConOutConst.MSG_CON_OUT_CONNACK_USER,
+				ConOutConst.MSG_CON_OUT_CONNACK_AUTH 
+				}; 
+		
 		CONNECT_MESSAGE = ByteBuffer.allocate(256);//TODO: AAA, no idea what size to make this.
 		
 		sslSocketFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
@@ -127,9 +140,7 @@ public class ConnectionStage extends PronghornStage {
 																		
 						assert(inputSocketBuffer.position()>0) : "If count was positive we should have had a value here in the buffer";
 						inputSocketBuffer.flip(); //start reading from zero
-						
-						System.err.println("hello world");
-						
+												
 						if (!parseData()) {
 							//parse found an error and dropped the connection
 							return;
@@ -156,6 +167,7 @@ public class ConnectionStage extends PronghornStage {
 		//must be in connected or disconnected state before reading a fragment
 		if (notPendingConnect() &&
 			RingReader.tryReadFragment(apiIn)) {
+			
 			switch (RingReader.getMsgIdx(apiIn)) {
 			
 				case ConInConst.MSG_CON_IN_CONNECT:	
@@ -170,25 +182,9 @@ public class ConnectionStage extends PronghornStage {
 					host = RingReader.readASCII(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, commonBuilder).toString();										
 					
 					CONNECT_MESSAGE.clear();
-					int len = RingReader.readBytesLength(apiIn, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA);
-				
-					System.err.println("connect message len "+len);
-				
-					RingReader.readBytes(apiIn, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA, CONNECT_MESSAGE);
-								
-					CONNECT_MESSAGE.flip();
-					
-					StringBuilder builder = new StringBuilder();
-					StringBuilder builder2 = new StringBuilder();
-					while (CONNECT_MESSAGE.hasRemaining()) {
-						int x = CONNECT_MESSAGE.get();
-						builder.append(x).append(',');
-						builder2.append(Integer.toHexString(x)).append(',');						
-					}
-					System.err.println(builder);
-					System.err.println(builder2);
-					
-					
+			        
+					RingReader.readBytes(apiIn, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA, CONNECT_MESSAGE);								
+										
 					connect();
 										
 					break;
@@ -198,13 +194,7 @@ public class ConnectionStage extends PronghornStage {
 					if (!channel.isOpen()) {
 						return;//try again later, unable to connect right now					
 					}
-					
-					if (state==0) {
-						//TODO: error
-						
-					}
-					
-					
+										
 					if (2 == state && channel.isOpen()) {
 						try {							
 							DISCONNECT_MESSAGE.flip();
@@ -257,6 +247,8 @@ public class ConnectionStage extends PronghornStage {
 						
 			
 			}
+			
+			RingReader.releaseReadLock(apiIn);
 		}
 		
 	}
@@ -342,7 +334,6 @@ public class ConnectionStage extends PronghornStage {
 				
 				
 				if (0==(0x10 & packetType)) {
-					System.err.println("got ack");					
 					
 					//CONNACK - ack from our request to connect
 					// 0x20 type/reserved   0010 0000
@@ -354,13 +345,21 @@ public class ConnectionStage extends PronghornStage {
 						return false;
 					}
 					
-					System.err.println("connection confirmed");
-					state = 2; //up and ready
-					
+										
 					final int sessionPresent       = inputSocketBuffer.get();						
 					final int connectionReturnCode = inputSocketBuffer.get();
 					
-					//TODO: turn on the connection or report issue from message.
+					
+					if (0==connectionReturnCode) {
+						state = 2; //up and ready
+					} else {
+						state = 0;						
+					}
+					
+					//TODO: B refactor to no block this call!!!
+				    RingWriter.blockWriteFragment(apiOut, CON_ACK_MSG[connectionReturnCode]);
+					RingWriter.publishWrites(apiOut);
+			
 				} else {
 
 					//PUBCOMP  PARSE
@@ -446,38 +445,26 @@ public class ConnectionStage extends PronghornStage {
 			SocketAddress addr = new InetSocketAddress(host, port); //TODO:AA, must move object create. and replace the holding of host, not needed.
 			SocketChannel localChannel = SocketChannel.open();									
 			channel = (SocketChannel)localChannel.configureBlocking(false); 
-			
-			
+						
 			
 			assert(!channel.isBlocking()) : "Blocking must be turned off for all socket connections";
-			System.err.println("xxxx begin connnect");
 			
 			channel.connect(addr); //TODO: do this earlier ?
 			
 			
-			while (!channel.finishConnect()) { // TODO: make non blocking
-				
-			};
+			while (!channel.finishConnect()) { // TODO: make non blocking				
+			}
+
 			
-		//	int x = 100;
-		//	while (--x>=0) {
+			CONNECT_MESSAGE.flip();
+						
 			
-			System.err.println("remaining:" + CONNECT_MESSAGE.remaining());
-			//210 bytes for connection message?
-			
-				CONNECT_MESSAGE.flip();
+			while (CONNECT_MESSAGE.hasRemaining()) {
+				//TODO: make non blocking
+				channel.write(CONNECT_MESSAGE);
+			}
 				
-				
-				
-				while (CONNECT_MESSAGE.hasRemaining()) {
-					//TODO: make non blocking
-					channel.write(CONNECT_MESSAGE);
-				}
-				
-		//	}
-			System.err.println("xxxxxx   connection requsted with:"+CONNECT_MESSAGE.remaining());
-			
-			//channel.close();
+
 
 		} catch (Throwable t) {
 			log.error("Unable to connect", t);

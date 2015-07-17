@@ -7,14 +7,14 @@ import org.junit.Test;
 
 public class ConInConstTest {
 
-	int MSG_CON_IN_PUBLISH = lookupTemplateLocator("Publish",ClientFromFactory.connectionInFROM);  
-	int MSG_CON_IN_CONNECT = lookupTemplateLocator("Connect",ClientFromFactory.connectionInFROM);  
-	int MSG_CON_IN_DISCONNECT = lookupTemplateLocator("Disconnect",ClientFromFactory.connectionInFROM);  //Should there be packet data? its only 2 bytes 0xE0, 0x00
-	int MSG_CON_IN_SUBSCRIBE = lookupTemplateLocator("Subscribe",ClientFromFactory.connectionInFROM);  
-	int MSG_CON_IN_UNSUBSCRIBE = lookupTemplateLocator("UnSubscribe",ClientFromFactory.connectionInFROM);  
-	int MSG_CON_IN_PUB_ACK = lookupTemplateLocator("PubAck",ClientFromFactory.connectionInFROM);  
-	int MSG_CON_IN_PUB_REC = lookupTemplateLocator("PubRec",ClientFromFactory.connectionInFROM);  
-	int MSG_CON_IN_PUB_COMP = lookupTemplateLocator("PubComp",ClientFromFactory.connectionInFROM);  
+	private final int MSG_CON_IN_PUBLISH = lookupTemplateLocator("Publish",ClientFromFactory.connectionInFROM);  
+	private final int MSG_CON_IN_CONNECT = lookupTemplateLocator("Connect",ClientFromFactory.connectionInFROM);  
+	private final int MSG_CON_IN_DISCONNECT = lookupTemplateLocator("Disconnect",ClientFromFactory.connectionInFROM);  //Should there be packet data? its only 2 bytes 0xE0, 0x00
+	private final int MSG_CON_IN_SUBSCRIBE = lookupTemplateLocator("Subscribe",ClientFromFactory.connectionInFROM);  
+	private final int MSG_CON_IN_UNSUBSCRIBE = lookupTemplateLocator("UnSubscribe",ClientFromFactory.connectionInFROM);  
+	private final int MSG_CON_IN_PUB_ACK = lookupTemplateLocator("PubAck",ClientFromFactory.connectionInFROM);  
+	private final int MSG_CON_IN_PUB_REC = lookupTemplateLocator("PubRec",ClientFromFactory.connectionInFROM);  
+	private final int MSG_CON_IN_PUB_COMP = lookupTemplateLocator("PubComp",ClientFromFactory.connectionInFROM);  
 	
 	@Test
 	public void testExpectedMsgIds() {

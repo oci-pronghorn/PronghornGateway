@@ -25,18 +25,21 @@ public class IntegrationTest {
 
 	public class IntegrationTestConnectDisconnector extends APIStage {
 
-		private int iterations;
+		private int toSend;
+		private final int iterations;
 		
 		public IntegrationTestConnectDisconnector(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut,
 				RingBuffer connectionIn, int iterations) {
 			super(gm,unusedIds,connectionOut,connectionIn);
-			this.iterations = iterations;
+			this.toSend = iterations;
+			this.iterations =iterations;
 		}
 
 		@Override
 		public void businessLogic() {
 			
-			if (--iterations>=0) {
+			if (--toSend>=0) {
+				System.err.println("sent connect, disconect "+toSend);
 				CharSequence url = "127.0.0.1";
 				int conFlags = MQTTEncoder.CONNECT_FLAG_CLEAN_SESSION_1;
 				
@@ -52,7 +55,11 @@ public class IntegrationTest {
 				requestDisconnect();
 							
 			} else {
-				requestShutdown();
+				
+				//only shut down after we get all the expected connection acks.
+				//TODO: AA, requested shutdown needs to ignore input queues.
+				
+			    requestShutdown();
 			}
 			
 		}		

@@ -1,5 +1,7 @@
 package com.ociweb.gateway.client;
 
+import java.util.Arrays;
+
 import com.ociweb.pronghorn.ring.RingBuffer;
 
 public class MQTTEncoder {
@@ -36,50 +38,41 @@ public class MQTTEncoder {
 		//Remaining Length.
 		int length = 6+1+1+2;//fixed portion from protoName level flags and keep alive
 		
-		System.err.println("xxxx "+length+" "+clientId.length);
-		
-		length += clientId.length;//encoded clientId
+		length += (2+clientId.length);//encoded clientId
 		
 		
 		
 		if (0!=(CONNECT_FLAG_WILL_FLAG_2&conFlags)) {
-			length += willTopic.length;
-			length += willMessage.length;
+			length += (2+willTopic.length);
+			length += (2+willMessage.length);
 		}
 		
 		if (0!=(CONNECT_FLAG_USERNAME_7&conFlags)) {
-			length += user.length;
+			length += (2+user.length);
 		}
 		
 		if (0!=(CONNECT_FLAG_PASSWORD_6&conFlags)) {
-			length += pass.length;
+			length += (2+pass.length);
 		}
 		assert(length>0) : "Code error above this point, length must always be positive";
 		if (length>(1<<28)) {
 			//TODO: A, text fields are too large where do we report this error
 			
 		}
-		
-		System.err.println("x bytePos:"+firstPos);
-		
-		
+				
 		bytePos = appendFixedHeader(bytePos, byteMask, byteBuffer, 0x10, length); //const and remaining length, 2  bytes
-		
-		System.err.println("a bytePos:"+bytePos);//2
-		
+				
 		//variable header
 		bytePos = appendFixedProtoName(bytePos, byteMask, byteBuffer); //const 6 bytes
 		bytePos = appendByte(bytePos, byteMask, byteBuffer, 4); //const 1 byte for version		
 		bytePos = appendByte(bytePos, byteMask, byteBuffer, conFlags); //8 bits or togehter, if clientId zero length must set clear
 		bytePos = appendShort(bytePos, byteMask, byteBuffer, ttlSec); //seconds < 16 bits
 		
-		System.err.println("b bytePos:"+bytePos);//10
 		
 		//payload
 		bytePos = appendShort(bytePos, byteMask, byteBuffer, clientIdLength);
 		bytePos = appendBytes(bytePos, byteMask, byteBuffer, clientId, clientIdIdx, clientIdLength, clientIdMask);
 		
-		System.err.println("c bytePos:"+bytePos);//34 clientIdLenght
 		
 		if (0!=(CONNECT_FLAG_WILL_FLAG_2&conFlags)) {
 			
@@ -89,19 +82,16 @@ public class MQTTEncoder {
 			bytePos = appendBytes(bytePos, byteMask, byteBuffer, willMessage, willMessageIdx, willMessageLength, willMessageMask);
 			
 		}
-		System.err.println("d bytePos:"+bytePos);
 		
 		if (0!=(CONNECT_FLAG_USERNAME_7&conFlags)) {
 			bytePos = appendShort(bytePos, byteMask, byteBuffer, userLength);
 			bytePos = appendBytes(bytePos, byteMask, byteBuffer, user, userIdx, userLength, userMask);	//if user flag on	
 		}
-		System.err.println("e bytePos:"+bytePos);
 		
 		if (0!=(CONNECT_FLAG_PASSWORD_6&conFlags)) {
 			bytePos = appendShort(bytePos, byteMask, byteBuffer, passLength);
 			bytePos = appendBytes(bytePos, byteMask, byteBuffer, pass, passIdx, passLength, passMask); //if pass flag on
 		}
-		System.err.println("f bytePos:"+bytePos);
 		
 		//total length is needed to close out this var length field in the queue
 		return bytePos-firstPos;

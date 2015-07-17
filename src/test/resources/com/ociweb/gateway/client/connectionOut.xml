@@ -9,6 +9,20 @@
     <uInt32 name="PacketId" id="200"/>
    </template>
   
+   <template name="ConnAckOK" id="20" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+   </template>
+   <template name="ConnAckProto" id="21" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+   </template>
+  <template name="ConnAckId" id="22" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+   </template>
+  <template name="ConnAckServer" id="23" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+   </template>
+   <template name="ConnAckUser" id="24" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+   </template>  
+   <template name="ConnAckAuth" id="25" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">
+   </template>  
+   
+   
 <!-- for subs -->
 
    <template name="Message" id="9" xmlns="http://www.fixprotocol.org/ns/fast/td/1.1">

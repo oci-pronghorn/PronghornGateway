@@ -13,12 +13,11 @@ public class ClientFromFactory {
 		    "connectionIn.xml");
 	
 	public final static FieldReferenceOffsetManager connectionOutFROM = new FieldReferenceOffsetManager(
-		    new int[]{0xc0400002,0x80000000,0xc0200002,0xc0400002,0x80000000,0xc0200002,0xc0400005,0x80000001,0x80000000,0xa0000000,0xa0000001,0xc0200005},
+		    new int[]{0xc0400002,0x80000000,0xc0200002,0xc0400002,0x80000000,0xc0200002,0xc0400001,0xc0200001,0xc0400001,0xc0200001,0xc0400001,0xc0200001,0xc0400001,0xc0200001,0xc0400001,0xc0200001,0xc0400001,0xc0200001,0xc0400005,0x80000001,0x80000000,0xa0000000,0xa0000001,0xc0200005},
 		    (short)0,
-		    new String[]{"PubAck","PacketId",null,"PubRec","PacketId",null,"Message","QOS","PacketId","Topic","Payload",null},
-		    new long[]{6, 200, 0, 7, 200, 0, 9, 100, 200, 400, 500, 0},
-		    new String[]{"global",null,null,"global",null,null,"global",null,null,null,null,null},
-		    "connectionOut.xml");
-	
-	
+		    new String[]{"PubAck","PacketId",null,"PubRec","PacketId",null,"ConnAckOK",null,"ConnAckProto",null,"ConnAckId",null,"ConnAckServer",null,"ConnAckUser",null,"ConnAckAuth",null,"Message","QOS","PacketId","Topic","Payload",null},
+		    new long[]{6, 200, 0, 7, 200, 0, 20, 0, 21, 0, 22, 0, 23, 0, 24, 0, 25, 0, 9, 100, 200, 400, 500, 0},
+		    new String[]{"global",null,null,"global",null,null,"global",null,"global",null,"global",null,"global",null,"global",null,"global",null,"global",null,null,null,null,null},
+		    "connectionOut.xml"); 
+
 }
