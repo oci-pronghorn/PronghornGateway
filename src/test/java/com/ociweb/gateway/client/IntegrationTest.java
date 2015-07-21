@@ -13,8 +13,11 @@ import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
@@ -23,16 +26,57 @@ import com.ociweb.pronghorn.stage.scheduling.ThreadPerStageScheduler;
 
 public class IntegrationTest {
 
-	public class IntegrationTestConnectDisconnector extends APIStage {
 
+    private static Server server;
+    private static Logger log = LoggerFactory.getLogger(IntegrationTest.class);
+	
+	@BeforeClass
+	public static void setup() {
+		try {
+			startBroker();
+			startSubsriber();
+		} catch (Exception e) {
+			
+			e.printStackTrace();
+			fail();
+		}
+	}
+	
+	@AfterClass
+	public static void shutdown() {
+		server.stopServer();
+		server = null;
+	}
+	
+	public class IntegrationTestQOS0Publish extends APIStage {
+		
 		private int toSend;
 		private final int iterations;
+		private int connectionsCounted;
+		private boolean cleanShutdown = false;
 		
-		public IntegrationTestConnectDisconnector(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut,
-				RingBuffer connectionIn, int iterations) {
+		private final String topic = "root\\box\\color";		
+		private final int valuesBits = 8;
+		private final int valuesMask = (1<<valuesBits)-1;
+		private final byte[] values = new byte[valuesMask+1];
+		
+		private final int topicPos = 0;
+		private final int topicLen = MQTTEncoder.convertToUTF8(topic,0,topic.length(),
+				                                 values, topicPos, valuesMask);
+		
+		private final int payloadPos = 0 + topicLen;			
+		private final int payloadLen = 32;
+		
+		public IntegrationTestQOS0Publish(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn, int iterations) {
 			super(gm,unusedIds,connectionOut,connectionIn);
 			this.toSend = iterations;
 			this.iterations =iterations;
+			
+			int i = payloadLen;
+			while (--i>=0) {
+				values[payloadPos+i] = (byte)i;
+			}
+			
 		}
 
 		@Override
@@ -50,35 +94,103 @@ public class IntegrationTest {
 				byte[] username = empty;
 				byte[] passwordBytes = empty;
 				
-				requestConnect(url, conFlags, willTopic, willMessageBytes, username, passwordBytes);
+				while (!requestConnect(url, conFlags, willTopic, willMessageBytes, username, passwordBytes)) {
+					
+				}
+						
+				final int qualityOfService = 0;
+								
+				int retain = 0;
 							
-				requestDisconnect();
+				long pos;
+				while (-1==(pos = requestPublish(values, topicPos, topicLen, valuesMask, qualityOfService, retain, values, payloadPos, payloadLen, valuesMask))) {
+				}
+				
+				while (!requestDisconnect()) {
+					
+				};
 							
-			} else {
-				
-				//only shut down after we get all the expected connection acks.
-				//TODO: AA, requested shutdown needs to ignore input queues.
-				
-			    requestShutdown();
+			} else {				
+				if (connectionsCounted>=iterations) {
+					cleanShutdown = true;
+					requestShutdown();		
+					log.error("shutdown of test was requested.");
+				}
 			}
 			
-		}		
-		
-		
-	}
-
-
-	@BeforeClass
-	public static void setup() {
-		try {
-			startBroker();
-			startSubsriber();
-		} catch (Exception e) {
-			
-			e.printStackTrace();
-			fail();
 		}
 	}
+	
+	
+	public class IntegrationTestConnectDisconnector extends APIStage {
+
+		private int toSend;
+		private final int iterations;
+		private int connectionsCounted;
+		private boolean cleanShutdown = false;
+		
+		public IntegrationTestConnectDisconnector(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut,
+				RingBuffer connectionIn, int iterations) {
+			super(gm,unusedIds,connectionOut,connectionIn);
+			this.toSend = iterations;
+			this.iterations =iterations;
+		}
+
+		
+		@Override
+		public void businessLogic() {
+			
+			if (--toSend>=0) {
+				System.err.println("sent connect, disconect "+toSend);
+				CharSequence url = "127.0.0.1";
+				int conFlags = MQTTEncoder.CONNECT_FLAG_CLEAN_SESSION_1;
+				
+				byte[] empty = new byte[0];
+				
+				byte[] willTopic = empty;
+				byte[] willMessageBytes = empty;
+				byte[] username = empty;
+				byte[] passwordBytes = empty;
+				
+				while (!requestConnect(url, conFlags, willTopic, willMessageBytes, username, passwordBytes)) {
+					
+				}
+							
+				while (!requestDisconnect()) {
+					
+				};
+							
+			} else {				
+				if (connectionsCounted>=iterations) {
+					cleanShutdown = true;
+					requestShutdown();		
+					log.error("shutdown of test was requested.");
+				}
+			}
+			
+		}
+
+		@Override
+		public void newConnection() {
+			connectionsCounted++;
+		}
+
+		@Override
+		public void newConnectionError(int err) {
+			fail("Unable to connect due to error code:"+err);
+		}
+
+		@Override
+		public void shutdown() {
+			if (connectionsCounted<iterations) {
+				fail("expected "+iterations+" counnetions but found "+connectionsCounted);
+			}
+		}	
+		
+		
+	}
+
+
 	
 	
 	
@@ -148,15 +260,34 @@ public class IntegrationTest {
 		
 	    StageScheduler scheduler = new ThreadPerStageScheduler(gm);
         scheduler.startup();
-        scheduler.awaitTermination(10, TimeUnit.SECONDS);
-		
-        //TODO: need to confirm count of connections.
-       
-       
-		
-		
+        scheduler.awaitTermination(3, TimeUnit.SECONDS);		
 	}
 	
+    @Test		
+	public void testQoS0() {
+		//for this test we will use a known working broker and known working subscriber (both from eclipse)
+		//we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.
+		
+    	final int testSize = 5;
+    	
+		GraphManager gm = new GraphManager();
+		APIStageFactory factory = new APIStageFactory() {
+
+			@Override
+			public APIStage newInstance(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn) {
+				return new IntegrationTestQOS0Publish(gm, unusedIds, connectionOut, connectionIn, testSize);
+			}
+			
+		};
+		ClientAPIFactory.clientAPI(factory ,gm); //TODO:: Make own stage and in run measure to send value.
+		
+	    StageScheduler scheduler = new ThreadPerStageScheduler(gm);
+        scheduler.startup();
+        scheduler.awaitTermination(3, TimeUnit.SECONDS);		
+	}
+	    
+    
+    
 	
 	//then test publish QoS 0
 	
@@ -166,10 +297,9 @@ public class IntegrationTest {
 	
 	
 	
-	
 	private static void startBroker() throws IOException {
 		
-        final Server server = new Server();
+        server = new Server();
         
         String configPath = System.getProperty("moquette.path", null);
         server.startServer(new File(configPath, "config/moquette.conf"));
@@ -178,7 +308,9 @@ public class IntegrationTest {
         Runtime.getRuntime().addShutdownHook(new Thread() {
             @Override
             public void run() {
-                server.stopServer();
+            	if (null!=server) {
+            		server.stopServer();
+            	}
             }
         });
         

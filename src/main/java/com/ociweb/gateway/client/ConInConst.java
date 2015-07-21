@@ -20,7 +20,7 @@ public class ConInConst {
 	
 	public static final int CON_IN_PUBLISH_FIELD_QOS; //TODO: B, for smaller code change these to constants as well
 	public static final int CON_IN_PUBLISH_FIELD_PACKETID;
-	public static final int CON_IN_PUBLISH_FIELD_PACKETDATA;  	
+	public static final int CON_IN_PUBLISH_FIELD_PACKETDATA;  //TODO: B, break this up into different blocks so we can use pronouns	
 	public static final int CON_IN_CONNECT_FIELD_URL;
 	public static final int CON_IN_CONNECT_FIELD_PACKETDATA;		  	
 	public static final int CON_IN_SUBSCRIBE_FIELD_PACKETDATA;

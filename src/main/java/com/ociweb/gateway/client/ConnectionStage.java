@@ -2,15 +2,10 @@ package com.ociweb.gateway.client;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.net.SocketAddress;
-import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
-import java.util.Arrays;
 
-import javax.net.SocketFactory;
-import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 
 import org.slf4j.Logger;
@@ -41,7 +36,7 @@ public class ConnectionStage extends PronghornStage {
 	 private ByteBuffer CONNECT_MESSAGE;
 	 	 
 	 private int[] CON_ACK_MSG;
-		
+	 private int prev = -100;
 	 
 	 private static Logger log = LoggerFactory.getLogger(ConnectionStage.class);
 	 
@@ -114,8 +109,6 @@ public class ConnectionStage extends PronghornStage {
 	public void shutdown() {
 		
 	}
-
-
 	
 	
 	@Override
@@ -128,8 +121,7 @@ public class ConnectionStage extends PronghornStage {
 			2==state) { //connection established now reading
 			
 			if (!channel.isOpen()) {
-				connect();			
-		
+				connect();
 			}
 	
 			if (channel.isOpen()) {
@@ -150,8 +142,7 @@ public class ConnectionStage extends PronghornStage {
 	                    //sets up the position for writing again and sets limit to capacity.
 						unflip(inputSocketBuffer);
 						
-					}
-					
+					}					
 					
 					//if this returns 0 then there was nothing to read and nothign to do, only works in non blocking mode.
 							
@@ -168,21 +159,27 @@ public class ConnectionStage extends PronghornStage {
 		if (notPendingConnect() &&
 			RingReader.tryReadFragment(apiIn)) {
 			
-			switch (RingReader.getMsgIdx(apiIn)) {
+			int msgIdx = RingReader.getMsgIdx(apiIn);
+			log.error("now reading message "+ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]);
+			
+			switch (msgIdx) {
 			
 				case ConInConst.MSG_CON_IN_CONNECT:	
 					//set value now so that no more fragments are read before the ack of the connect is recieved.
 					state = 1; //in the connection process
-															
+					log.error("sending a new connect request to server, set state: "+state);
+							
+					
 					//TODO: A, need new method
-					//if (!RingReader.isEqual(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL,host));
+					//if (!
+					//RingReader.isEqual(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL,host);
 										
 					//this is only for a new connection as defined from the api
 					commonBuilder.setLength(0);
 					host = RingReader.readASCII(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, commonBuilder).toString();										
 					
+					//must hold the connection message in this byte buffer so we can use it any time we need to re-connect.
 					CONNECT_MESSAGE.clear();
-			        
 					RingReader.readBytes(apiIn, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA, CONNECT_MESSAGE);								
 										
 					connect();
@@ -191,40 +188,49 @@ public class ConnectionStage extends PronghornStage {
 				case ConInConst.MSG_CON_IN_DISCONNECT:
 					assert(1!=state);
 					
+					log.error("disconnect started");
+					
 					if (!channel.isOpen()) {
-						return;//try again later, unable to connect right now					
+						//unable to disconnect because it has already been done
+						state = 0;						
+						return;				
 					}
 										
 					if (2 == state && channel.isOpen()) {
 						try {							
 							DISCONNECT_MESSAGE.flip();
-							channel.write(DISCONNECT_MESSAGE );	//send disconnect  0xE0 0x00
+							
+							while (DISCONNECT_MESSAGE.hasRemaining()) { //TODO: how can this be async?
+								channel.write(DISCONNECT_MESSAGE );	//send disconnect  0xE0 0x00
+							}
+														
 							channel.close();
 						} catch (IOException e) {
 							log.error("Unable to process disconnect from API",e);
 						}
+					} else {
+						log.error("warning something happended and disconnect found state to be :"+state);
 					}
 					state = 0; //TODO: once defined these states need to be static constants
+					log.error("disconnect finished state: "+state);
 					
 					break;
 				case ConInConst.MSG_CON_IN_PUBLISH:
 					assert(1!=state);
 					
 					if (state==0) {
-						//TODO: error
+						//TODO: error, called publish before connect.
 						
+						return;
 					}
-					
-					if (!channel.isOpen()) {
-						return;//try again later, unable to connect right now					
-					}
-					
-					if (!channel.isOpen()) {
-						//TODO: A, network error expected this to be open already
-						connect();
-						
+
+					if (!channel.isOpen()) {						
+						connect();						
 						if (!channel.isOpen()) {
-							return;//try again later
+							
+							
+							//TODO: AAA, we have already taken the message so we need a flag to re-enter to this point
+							return;//try again later, unable to connect right now
 							
 						}
 						
@@ -232,7 +238,37 @@ public class ConnectionStage extends PronghornStage {
 					
 					int qos = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
 					
-					
+					if (0==qos) {
+						//simple case, just send the data
+						log.error("sending QOS 0 to server");
+
+						ByteBuffer buffer1 = RingReader.wrappedBuffer1(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA);
+						assert(buffer1.remaining()>0): "The packed data must be found in the buffer";
+						
+						while (buffer1.hasRemaining()) { //TODO: how can this be async?
+							try {
+								channel.write(buffer1);
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}	//send disconnect  0xE0 0x00
+						}
+						//
+						ByteBuffer buffer2 = RingReader.wrappedBuffer2(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA);
+						while (buffer2.hasRemaining()) { //TODO: how can this be async?
+							try {
+								channel.write(buffer2);
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}	//send disconnect  0xE0 0x00
+						}
+						
+					} else {
+						//send and wait for ack so do not release.
+						
+						
+					}
 					
 					
 					//publish message to connection from the input queue
@@ -249,6 +285,11 @@ public class ConnectionStage extends PronghornStage {
 			}
 			
 			RingReader.releaseReadLock(apiIn);
+		} else {
+			if (prev!=state) {
+				log.error("STUCK with "+state+ "   "+apiIn);
+				prev=state;
+			}
 		}
 		
 	}
@@ -334,6 +375,7 @@ public class ConnectionStage extends PronghornStage {
 				
 				
 				if (0==(0x10 & packetType)) {
+					log.error("got ack from server testing");
 					
 					//CONNACK - ack from our request to connect
 					// 0x20 type/reserved   0010 0000
@@ -355,6 +397,7 @@ public class ConnectionStage extends PronghornStage {
 					} else {
 						state = 0;						
 					}
+					log.error("got ack from server connect state :"+state);
 					
 					//TODO: B refactor to no block this call!!!
 				    RingWriter.blockWriteFragment(apiOut, CON_ACK_MSG[connectionReturnCode]);

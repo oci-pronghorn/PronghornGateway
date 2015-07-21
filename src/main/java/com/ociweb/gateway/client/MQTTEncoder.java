@@ -203,7 +203,7 @@ public class MQTTEncoder {
 		bytePos = appendBytes(bytePos, byteMask, byteBuffer, payload, payloadIdx, payloadLength, payloadMask);
 		
 		//total length is needed to close out this var length field in the queue
-		return firstPos-bytePos;
+		return bytePos-firstPos;
 	}
 
 

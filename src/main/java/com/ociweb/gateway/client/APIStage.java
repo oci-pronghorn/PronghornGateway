@@ -78,16 +78,10 @@ public class APIStage extends PronghornStage {
 		
 	}
 	
-	public void newConnectionError(int err) {
-		
-	}
-	
+	public void newConnectionError(int err) {		
+	}	
 	
 	public void businessLogic() {
-		//call the protected methods on this single thread
-		
-		
-		
 	}
 	
 	
@@ -100,9 +94,8 @@ public class APIStage extends PronghornStage {
 	protected boolean requestConnect(CharSequence url, int conFlags, byte[] willTopic, byte[] willMessageBytes, byte[] username, byte[] passwordBytes) {
 
 		if (RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_CONNECT)) {
-			
 		
-			
+					
 			
 			RingWriter.writeASCII(toCon, ConInConst.CON_IN_CONNECT_FIELD_URL, url);
 			
@@ -138,12 +131,8 @@ public class APIStage extends PronghornStage {
 				
 	}
 
-
-	//TODO: B, delay generative testing for this component because it may turn out to not be an actor.
-	
-	
 	protected long requestPublish(byte[] topic, int topicIdx, int topicLength, int topicMask, 
-			                   int QualityOfService, int retain, 
+			                   int qualityOfService, int retain, 
 			                   byte[] payload, int payloadIdx, int payloadLength, int payloadMask) {
 				
 		if (packetId >= packetIdLimit) {
@@ -158,14 +147,14 @@ public class APIStage extends PronghornStage {
 		
 		if (RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_PUBLISH)) {
 						
-			RingWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_QOS, QualityOfService);
+			RingWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_QOS, qualityOfService);
 			RingWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETID, packetId++);
 						
 			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
 			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
 			int byteMask = RingBuffer.byteMask(toCon);
 			
-			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, QualityOfService, retain, 
+			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, qualityOfService, retain, 
 					                topic, topicIdx, topicLength, topicMask, 
 					                payload, payloadIdx, payloadLength, payloadMask);
 			RingWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
