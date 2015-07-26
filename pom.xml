@@ -186,11 +186,10 @@
             <option>-keep public class com.ociweb.gateway.broker.PronghornGateway {
 			    public static void main(java.lang.String[]);
 			}</option>
-            <!--  option>-dontobfuscate</option -->
-            
-            <!--  >option>-optimizationpasses 3</option -->
+            <!--  option>-dontobfuscate</option -->            
+            <option>-optimizationpasses 2</option>
             <option>-allowaccessmodification</option>
-			<option>-overloadaggressively</option>
+			<option>-flattenpackagehierarchy</option>
           </options>
           <obfuscate>true</obfuscate>
           <libs>

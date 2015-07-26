@@ -109,11 +109,11 @@ public class MQTTEncoder {
 		byte encodedByte = (byte)(x & 0x7F);
 		x = x >> 7;
 		while (x>0) {
-			target[mask&idx++]=(byte)(128 | encodedByte);			
+			target[mask&idx++]=(byte)(0x80 | encodedByte);			
 			encodedByte = (byte)(x & 0x7F);
 			 x = x >> 7;
 		}
-		target[mask&idx++]=(byte)(0xFF&encodedByte);	
+		target[mask&idx++]=(byte)(0xFF & encodedByte);	
 		return idx;
 	}
 	
@@ -185,26 +185,47 @@ public class MQTTEncoder {
 	
 	public static int buildPublishPacket(int bytePos, byte[] byteBuffer, int byteMask, int qos, int retain, 
 			                             byte[] topic, int topicIdx, int topicLength, int topicMask,
-			                             byte[] payload, int payloadIdx, int payloadLength, int payloadMask) {
+			                             byte[] payload, int payloadIdx, int payloadLength, int payloadMask,  int packetId) {
 		
 		final int firstPos = bytePos;
 		
-		int length = topic.length+2+payload.length;
+		int length = topicLength + 2 + payloadLength + (packetId>=0 ? 2 : 0); //replace with  (0x2&(~packetId)>>30) //TOOD: B, or od this external and break method up.
 		
-		final int pubHead = 0x30 | (0x3&(qos<<1)) | 1&retain; //dup is zero that is modified later
+		assert(length<(topicMask+payloadMask)) : "Length is far too large and can not be right"; //TODO: C, be sure server side checks this and rejects bad values.
+		
+		System.err.println("write packet length of "+length);
+		
+		final int pubHead = 0x30 | (0x3&(qos<<1)) | 1&retain; //bit 3 dup is zero which is modified later
 		bytePos = appendFixedHeader(bytePos, byteMask, byteBuffer, pubHead, length); //const and remaining length, 2  bytes
+		assert(topicLength>0);
 		
 		//variable header
 		bytePos = appendShort(bytePos, byteMask, byteBuffer, topicLength);
 		bytePos = appendBytes(bytePos, byteMask, byteBuffer, topic, topicIdx, topicLength, topicMask);
-		int packetId = -1;
-		bytePos = appendShort(bytePos, byteMask, byteBuffer, packetId);
+		
+		if (packetId>=0) {//TODO: B, we have 3 conditionals around this packet id change on QOS, must remove.
+			bytePos = appendShort(bytePos, byteMask, byteBuffer, packetId);
+		}
 		//payload - note it does not record the length first, its just the remaining space
 		bytePos = appendBytes(bytePos, byteMask, byteBuffer, payload, payloadIdx, payloadLength, payloadMask);
 		
 		//total length is needed to close out this var length field in the queue
 		return bytePos-firstPos;
 	}
+
+
+    public static int buildPubRelPacket(int bytePos, byte[] byteBuffer, int byteMask, int packetId) {
+        
+        //0x62  type/reserved   0110 0010
+        //0x02  remaining length
+        //MSB PacketID high
+        //LSB PacketID low
+
+        byteBuffer[byteMask&bytePos++] = (byte)0x62;
+        byteBuffer[byteMask&bytePos++] = (byte)0x02;
+        appendShort(bytePos, byteMask, byteBuffer, packetId);
+        return 4;
+    }
 
 
 }

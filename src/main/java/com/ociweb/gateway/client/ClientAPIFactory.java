@@ -1,10 +1,7 @@
 package com.ociweb.gateway.client;
 
-import java.lang.reflect.Constructor;
-
 import com.ociweb.gateway.common.CommonFromFactory;
 import com.ociweb.gateway.common.IdGenStage;
-import com.ociweb.gateway.common.TimeKeeperStage;
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.ring.RingBufferConfig;
 import com.ociweb.pronghorn.stage.monitor.MonitorConsoleStage;
@@ -38,16 +35,12 @@ public class ClientAPIFactory {
 
 	//NOTE: this will be generated from the DOT file in future projects, this is here as an example.
 	private static APIStage buildInstance(APIStageFactory factory, GraphManager gm, int queuedIds, int queuedTimeControl, int queuedTimeTrigger, int queuedConIn, int queuedConOut, int maxTopicOrPayload) {
-		RingBufferConfig idGenConfig = new RingBufferConfig(CommonFromFactory.idRangesFROM, queuedIds, 0);
-		RingBufferConfig timeControlConfig = new RingBufferConfig(CommonFromFactory.timeControlFROM, queuedTimeControl, 0);
-		RingBufferConfig timeTriggerConfig = new RingBufferConfig(CommonFromFactory.timeTriggerFROM, queuedTimeTrigger, 0);			
+		RingBufferConfig idGenConfig = new RingBufferConfig(CommonFromFactory.idRangesFROM, queuedIds, 0);		
 		RingBufferConfig connectionInConfig = new RingBufferConfig(ClientFromFactory.connectionInFROM, queuedConIn, maxTopicOrPayload);
 		RingBufferConfig connectionOutConfig = new RingBufferConfig(ClientFromFactory.connectionOutFROM, queuedConOut, maxTopicOrPayload);
 						
 		RingBuffer unusedIds = new RingBuffer(idGenConfig);
 		RingBuffer releasedIds = new RingBuffer(idGenConfig);
-		RingBuffer timeControl = new RingBuffer(timeControlConfig);
-		RingBuffer timeTrigger = new RingBuffer(timeTriggerConfig);
 		RingBuffer connectionIn = new RingBuffer(connectionInConfig);
 		RingBuffer connectionOut = new RingBuffer(connectionOutConfig);
 				
@@ -59,8 +52,7 @@ public class ClientAPIFactory {
 		
 		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, apiStage);
 		
-		new TimeKeeperStage(gm, timeControl, timeTrigger);
-		new ConnectionStage(gm, connectionIn, timeTrigger, connectionOut, timeControl, releasedIds);
+		new ConnectionStage(gm, connectionIn, connectionOut, releasedIds);
 		
 		//TODO: B, replace with JMX version before release.
 		

@@ -13,22 +13,6 @@ public class CommonFromFactory {
 		    new long[]{1, 100, 0},
 		    new String[]{"global",null,null},
 		    "idRanges.xml");
-	
-	public final static FieldReferenceOffsetManager timeControlFROM = new FieldReferenceOffsetManager(
-		    new int[]{0xc0400001,0xc0200001,0xc0400001,0xc0200001,0xc0400001,0xc0200001},
-		    (short)0,
-		    new String[]{"Start",null,"Stop",null,"Reset",null},
-		    new long[]{1, 0, 2, 0, 3, 0},
-		    new String[]{"global",null,"global",null,"global",null},
-		    "timeControl.xml");
-	
-	public final static FieldReferenceOffsetManager timeTriggerFROM = new FieldReferenceOffsetManager(
-		    new int[]{0xc0400001,0xc0200001},
-		    (short)0,
-		    new String[]{"Trigger",null},
-		    new long[]{1, 0},
-		    new String[]{"global",null},
-		    "timeTrigger.xml");
 
 	public static FieldReferenceOffsetManager monitorFROM = new FieldReferenceOffsetManager(
 		    new int[]{0xc1400006,0x90800000,0x90800001,0x90800002,0x80000000,0x80200001,0xc1200006,0xc1400008,0x90800000,0x90800001,0x90800002,0x80000000,0x80200001,0x80800002,0x80200003,0xc1200008},

@@ -52,9 +52,9 @@ public class APIStage extends PronghornStage {
 	@Override
 	public void run() {
 		
-		//loop is for subscribers?
 		while (RingReader.tryReadFragment(fromCon)) {	
 			int msgIdx = RingReader.getMsgIdx(fromCon);
+			int packetId;
 			switch(msgIdx) {
 				case ConOutConst.MSG_CON_OUT_CONNACK_OK:
 					newConnection();
@@ -66,6 +66,37 @@ public class APIStage extends PronghornStage {
 				case ConOutConst.MSG_CON_OUT_CONNACK_USER:
 					newConnectionError(msgIdx);
 				break;	
+				case ConOutConst.MSG_CON_OUT_PUB_REL:
+				    packetId = RingReader.readInt(fromCon, ConOutConst.CON_OUT_PUB_REL_FIELD_PACKETID);
+				    //subscriber logic
+				    //TODO: now send pubcomp message to be sent 
+				    
+				    
+				break;
+				case ConOutConst.MSG_CON_OUT_PUB_ACK:
+				    packetId = RingReader.readInt(fromCon, ConOutConst.CON_OUT_PUB_ACK_FIELD_PACKETID);
+				    publishAck(packetId);
+				break;    
+				case ConOutConst.MSG_CON_OUT_PUB_REC:
+				    packetId = RingReader.readInt(fromCon, ConOutConst.CON_OUT_PUB_REC_FIELD_PACKETID);
+				    publishAck(packetId);
+				    
+				    while (!RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_PUB_REL)) {	//TODO: rewrite as non-blocking.			        
+				    }
+				    
+				    RingWriter.writeInt(toCon,  ConInConst.CON_IN_PUB_REL_FIELD_PACKETID, packetId);
+				   
+		            final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
+		            byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
+		            int byteMask = RingBuffer.byteMask(toCon);
+		            
+				    int len = MQTTEncoder.buildPubRelPacket(bytePos, byteBuffer, byteMask, packetId);
+	                             
+		            RingWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_PUB_REL_FIELD_PACKETDATA, len, bytePos);
+		            
+		            RingWriter.publishWrites(toCon);
+				    
+				break;
 				default:
 					
 			}
@@ -76,6 +107,10 @@ public class APIStage extends PronghornStage {
 	
 	public void newConnection() {
 		
+	}
+	
+	public void publishAck(int packetId) {
+	    
 	}
 	
 	public void newConnectionError(int err) {		
@@ -148,7 +183,10 @@ public class APIStage extends PronghornStage {
 		if (RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_PUBLISH)) {
 						
 			RingWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_QOS, qualityOfService);
-			RingWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETID, packetId++);
+			
+			int localPacketId = (0==qualityOfService) ? -1 : packetId++;
+			
+			RingWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETID, localPacketId);
 						
 			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
 			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
@@ -156,7 +194,7 @@ public class APIStage extends PronghornStage {
 			
 			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, qualityOfService, retain, 
 					                topic, topicIdx, topicLength, topicMask, 
-					                payload, payloadIdx, payloadLength, payloadMask);
+					                payload, payloadIdx, payloadLength, payloadMask, localPacketId);
 			RingWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
 				
 			RingWriter.publishWrites(toCon);

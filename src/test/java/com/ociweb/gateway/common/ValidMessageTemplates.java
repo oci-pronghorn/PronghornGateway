@@ -17,25 +17,6 @@ public class ValidMessageTemplates {
 		TestUtil.testForMatchingFROMs(templateFile, varName, encodedFrom);
 				
 	}
-
-	@Test
-	public void validateTimeControlTemplate() {
-		String templateFile = "/com/ociweb/gateway/common/timeControl.xml";
-		String varName = "timeControlFROM";				
-		FieldReferenceOffsetManager encodedFrom = CommonFromFactory.timeControlFROM;
-		
-		TestUtil.testForMatchingFROMs(templateFile, varName, encodedFrom);
-	}
-	
-	@Test
-	public void validateTimeTriggerTemplate() {
-		String templateFile = "/com/ociweb/gateway/common/timeTrigger.xml";
-		String varName = "timeTriggerFROM";				
-		FieldReferenceOffsetManager encodedFrom = CommonFromFactory.timeTriggerFROM;
-		
-		TestUtil.testForMatchingFROMs(templateFile, varName, encodedFrom);
-	}
-
 	
 	@Test
 	public void validateMonitorTemplate() {
@@ -44,7 +25,8 @@ public class ValidMessageTemplates {
 		FieldReferenceOffsetManager encodedFrom = CommonFromFactory.monitorFROM;
 		
 		TestUtil.testForMatchingFROMs(templateFile, varName, encodedFrom);
+					
 	}
-
+	
 	
 }

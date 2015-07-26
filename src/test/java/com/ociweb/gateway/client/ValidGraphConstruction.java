@@ -5,7 +5,6 @@ import static org.junit.Assert.*;
 import org.junit.Test;
 
 import com.ociweb.gateway.common.IdGenStage;
-import com.ociweb.gateway.common.TimeKeeperStage;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
@@ -30,17 +29,10 @@ public class ValidGraphConstruction {
 				if (stage instanceof ConnectionStage) {
 					
 					assertEquals("from API to Connection ",DemoStage.class, GraphManager.getRingProducer(gm, GraphManager.getInputPipe(gm, stage, 1).ringId).getClass());
-					assertEquals("from TimeKeeper to Connection ",TimeKeeperStage.class, GraphManager.getRingProducer(gm, GraphManager.getInputPipe(gm, stage, 2).ringId).getClass());
 					
 					assertEquals("from Connection to API ",DemoStage.class, GraphManager.getRingConsumer(gm, GraphManager.getOutputPipe(gm, stage, 1).ringId).getClass());
-					assertEquals("from Connection to TimeKeeper ",TimeKeeperStage.class, GraphManager.getRingConsumer(gm, GraphManager.getOutputPipe(gm, stage, 2).ringId).getClass());
-					assertEquals("from Connection to IdGen ",IdGenStage.class, GraphManager.getRingConsumer(gm, GraphManager.getOutputPipe(gm, stage, 3).ringId).getClass());
+					assertEquals("from Connection to IdGen ",IdGenStage.class, GraphManager.getRingConsumer(gm, GraphManager.getOutputPipe(gm, stage, 2).ringId).getClass());
 															
-				} else if (stage instanceof TimeKeeperStage) {
-					
-					assertEquals("from TimeKeeper to Connection ",ConnectionStage.class, GraphManager.getRingConsumer(gm, GraphManager.getOutputPipe(gm, stage, 1).ringId).getClass());
-					assertEquals("from Connection to TimeKeeper ",ConnectionStage.class, GraphManager.getRingProducer(gm, GraphManager.getInputPipe(gm, stage, 1).ringId).getClass());
-					
 				} else if (stage instanceof APIStage) {
 					
 					assertEquals("from IdGen to API ",IdGenStage.class, GraphManager.getRingProducer(gm, GraphManager.getInputPipe(gm, stage, 1).ringId).getClass());
