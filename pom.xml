@@ -5,12 +5,7 @@
   <name>PronghornGateway</name>
   <description></description>
   <artifactId>PronghornGateway</artifactId>
-  
-  <!-- 
-  	Deliverable goals:
-  	   Full Jar must be smaller than 512K, desired size of 128K
-  	   Runtime for small use cases must work with less than 16MB, desired runtime of 4MB
-   -->
+   
    <properties>
     <java.bootstrap.classes>
       ${java.home}/lib/rt.jar
@@ -71,7 +66,8 @@
     <repository>
         <id>Eclipse Paho Repo</id>
         <url>https://repo.eclipse.org/content/repositories/paho-releases/</url>
-    </repository>
+  </repository>
+    
   <repository>
     <id>bintray</id>
     <url>http://dl.bintray.com/andsel/maven/</url>
@@ -167,7 +163,7 @@
         
 
 	
-	       <plugin>
+	    <plugin>
         <!--groupId>com.pyx4me</groupId-->
         <groupId>com.github.wvengen</groupId>
         <artifactId>proguard-maven-plugin</artifactId>

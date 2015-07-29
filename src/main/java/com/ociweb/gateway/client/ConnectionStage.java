@@ -22,7 +22,6 @@ public class ConnectionStage extends PronghornStage {
 	 private final RingBuffer apiIn;
 	 private final RingBuffer apiOut;
 	 private final RingBuffer idGenOut;
-	 private SSLSocketFactory sslSocketFactory;
 	 
 	 private final int inFlightLimit;
 	 private SocketChannel channel;
@@ -101,7 +100,6 @@ public class ConnectionStage extends PronghornStage {
 		
 		CONNECT_MESSAGE = ByteBuffer.allocate(256);//TODO: AAA, no idea what size to make this.
 		
-		sslSocketFactory = (SSLSocketFactory) SSLSocketFactory.getDefault();
 		inputSocketBuffer = ByteBuffer.allocate(256);//TODO: how big are the acks we need room for?
 	}
 
@@ -130,6 +128,15 @@ public class ConnectionStage extends PronghornStage {
 			}
 	
 			if (channel.isOpen()) {
+			    
+			    if (hasPendingWrites()) {
+			        nonBlockingByteBufferWrite();
+			        if (null!=pendingWriteBufferA || null!=pendingWriteBufferB) {
+			            return;//do not continue because we have pending writes which must be done first.
+			        }			        
+			    }
+			    
+			    
 				try {					
 					int count;					
 					while ( (count = channel.read(inputSocketBuffer)  ) > 0 ) {
@@ -161,7 +168,7 @@ public class ConnectionStage extends PronghornStage {
 		}
 
 		//must be in connected or disconnected state before reading a fragment
-		if (notPendingConnect() &&
+		if (notPendingConnect() && !hasPendingWrites() &&
 			RingReader.tryReadFragment(apiIn)) {
 			
 			int msgIdx = RingReader.getMsgIdx(apiIn);
@@ -202,17 +209,16 @@ public class ConnectionStage extends PronghornStage {
 					}
 										
 					if (2 == state && channel.isOpen()) {
-						try {							
+					//	try {							
 							DISCONNECT_MESSAGE.flip();
-							
-							while (DISCONNECT_MESSAGE.hasRemaining()) { //TODO: how can this be async?
-								channel.write(DISCONNECT_MESSAGE );	//send disconnect  0xE0 0x00
-							}
-														
-							channel.close();
-						} catch (IOException e) {
-							log.error("Unable to process disconnect from API",e);
-						}
+							pendingWriteBufferA = DISCONNECT_MESSAGE;//send disconnect  0xE0 0x00
+							nonBlockingByteBufferWrite();
+															
+							//TODO: AAA async is making this hard. when to close?
+							//channel.close();
+					//	} catch (IOException e) {
+					//		log.error("Unable to process disconnect from API",e);
+					//	}
 					} else {
 						log.error("warning something happended and disconnect found state to be :"+state);
 					}
@@ -238,13 +244,12 @@ public class ConnectionStage extends PronghornStage {
 						}						
 					}
 					
-					int qos = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
+					outstandingUnconfirmedMessages += RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS); //note that we added 2 for each qos of 2
 					
                     publish();
 					
-                    //TODO: modify dup bit!!!
-                    
-                    outstandingUnconfirmedMessages += qos;//note that we added 2 for each qos of 2
+                    //TODO: AAAAAAAAAAAAAAAAAAAAAAA, modify dup bit!!!
+                                        
 					break;
 						
 			}
@@ -252,7 +257,7 @@ public class ConnectionStage extends PronghornStage {
 		
 			//only if there are NO unconfirmed messages outstanding.
 			assert(outstandingUnconfirmedMessages>=0);
-			if (0==outstandingUnconfirmedMessages) {
+			if (0==outstandingUnconfirmedMessages && !hasPendingWrites()) {
 			    RingReader.releaseReadLock(apiIn);
 			    RingBuffer.releaseAllBatchedReads(apiIn);
 			}
@@ -268,32 +273,49 @@ public class ConnectionStage extends PronghornStage {
 		
 	}
 
+	private ByteBuffer pendingWriteBufferA;
+	private ByteBuffer pendingWriteBufferB;
+    
+
+    private boolean hasPendingWrites() {
+        return (null!=pendingWriteBufferA)&&(pendingWriteBufferA.hasRemaining()) ||
+               (null!=pendingWriteBufferB)&&(pendingWriteBufferB.hasRemaining());
+    }
 
 
     private void publish() {
-        //TODO: AA, this needs to be converted into a non blocking approach.
-        ByteBuffer buffer1 = RingReader.wrappedBuffer1(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA);
+        pendingWriteBufferA = RingReader.wrappedUnstructuredLayoutBufferA(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA);
+        pendingWriteBufferB = RingReader.wrappedUnstructuredLayoutBufferB(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA);
         
-        assert(buffer1.remaining()>0): "The packed data must be found in the buffer";
-                            
-        while (buffer1.hasRemaining()) { //TODO: how can this be async?
+        assert(pendingWriteBufferA.remaining()>0): "The packed data must be found in the buffer";
+                         
+        nonBlockingByteBufferWrite();
+    }
+
+
+
+    private void nonBlockingByteBufferWrite() {
+        if (null!= pendingWriteBufferA && pendingWriteBufferA.hasRemaining()) { 
         	try {
-        		channel.write(buffer1);
+        		channel.write(pendingWriteBufferA);
         	} catch (IOException e) {
         		// TODO Auto-generated catch block
         		e.printStackTrace();
         	}	//send disconnect  0xE0 0x00
         }
         
-        //NOTE: this is the same instance repositioned so we cant grab it early
-        ByteBuffer buffer2 = RingReader.wrappedBuffer2(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA);
-        while (buffer2.hasRemaining()) { //TODO: how can this be async?
-        	try {
-        		channel.write(buffer2);
+        if ((null == pendingWriteBufferA || !pendingWriteBufferA.hasRemaining()) && null!=pendingWriteBufferB && pendingWriteBufferB.hasRemaining()) { 
+            pendingWriteBufferA = null;
+            try {
+        		channel.write(pendingWriteBufferB);
         	} catch (IOException e) {
         		// TODO Auto-generated catch block
         		e.printStackTrace();
         	}	//send disconnect  0xE0 0x00
+        }
+        
+        if ( null!=pendingWriteBufferB && !pendingWriteBufferB.hasRemaining()) {
+            pendingWriteBufferB = null;
         }
     }
 
@@ -562,6 +584,9 @@ public class ConnectionStage extends PronghornStage {
 			
 			CONNECT_MESSAGE.flip();
 						
+		//	pendingWriteBufferA = CONNECT_MESSAGE;
+		//	nonBlockingByteBufferWrite();
+			//TODO://must add behavior object in to follow up with end of write, this is required for resend of confirmed messages conitnuation.
 			
 			while (CONNECT_MESSAGE.hasRemaining()) {
 				//TODO: make non blocking
