@@ -36,8 +36,25 @@
           <version>1.7.12</version>
           <scope>runtime</scope>
         </dependency>   
-
-    		
+        
+        <!-- This block added just to test if we can get Proguard to recoginze we never used them and then delete them
+             jFAST needs to have a pre-process stage where we can code generate what is needed for the template then
+             the resources folder can remain empty, and we will fail back to interpret or remove interpret code.
+         -->
+        <!--
+   		<dependency>
+   		    <groupId>com.ociweb</groupId>
+            <version>0.0.1-SNAPSHOT</version>
+            <artifactId>PronghornCompression</artifactId>
+   		</dependency>
+   		<dependency>
+   		     <groupId>com.ociweb</groupId>
+ 			 <version>0.0.1-SNAPSHOT</version>
+ 			 <artifactId>jFAST</artifactId>
+   		</dependency>
+   		-->
+   		<!-- end of Proguard test, dead jars, this works except that the resources of each jar kept, TODO: is there a solution to this?. -->
+   		
       	<dependency>
 		      <groupId>junit</groupId>
 		      <artifactId>junit</artifactId>
@@ -148,7 +165,7 @@
               <descriptorRef>jar-with-dependencies</descriptorRef>
             </descriptorRefs>
             <finalName>pg</finalName>  
-            <appendAssemblyId>false</appendAssemblyId>        
+            <appendAssemblyId>false</appendAssemblyId>      
           </configuration>
           <executions>
           <execution>
@@ -178,7 +195,6 @@
         </executions>
         <configuration>
           <options>
-            <!--  >option>-keep class com.ociweb.**</option -->
             <option>-keep public class com.ociweb.gateway.broker.PronghornGateway {
 			    public static void main(java.lang.String[]);
 			}</option>
@@ -186,6 +202,7 @@
             <option>-optimizationpasses 2</option>
             <option>-allowaccessmodification</option>
 			<option>-flattenpackagehierarchy</option>
+			<!-- option>-ignorewarnings</option -->
           </options>
           <obfuscate>true</obfuscate>
           <libs>

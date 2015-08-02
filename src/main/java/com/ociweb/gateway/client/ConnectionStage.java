@@ -6,8 +6,6 @@ import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
-import javax.net.ssl.SSLSocketFactory;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,17 +21,40 @@ public class ConnectionStage extends PronghornStage {
 	 private final RingBuffer apiOut;
 	 private final RingBuffer idGenOut;
 	 
-	 private final int inFlightLimit;
+	 private final int inFlightLimit = Settings.IN_FLIGHT;
 	 private SocketChannel channel;
 	 private StringBuilder commonBuilder = new StringBuilder();
-	 private String host;	
+	
 	 private byte state; //0 disconnected
 	 private ByteBuffer inputSocketBuffer;
 	 private ByteBuffer DISCONNECT_MESSAGE;
 	 private ByteBuffer CONNECT_MESSAGE;
+	 private ByteBuffer PING_MESSAGE;
 	 	 
 	 private int[] CON_ACK_MSG;
 	 private int prev = -100;
+	 
+	 private ByteBuffer pendingWriteBufferA;
+	 private ByteBuffer pendingWriteBufferB;
+	 private ActivityAfterWrite pendingActivityAfterWrite;
+	 
+	 //Poly-morphic method call is needed so we can store the 
+	 //next activity to be done while supporting non-blocking writes
+	 //To minimize the cost however, no interface is used.
+	 private ActivityAfterWrite AFTER_WRITE_DO_NOTHING;
+	 private ActivityAfterWrite AFTER_WRITE_DO_DISCONNECT;
+	 private ActivityAfterWrite AFTER_WRITE_CONTINUE_REPLAY;
+	        
+
+	 //TLS     socket 8883
+	 //non-tls socket 1883 
+	 private InetSocketAddress addr;
+	 
+
+	 
+	 //required to know when a ping must be sent to keep alive the connection
+	 private long lastTimestamp; 
+	 private int unconfirmedPings;   
 	 
 	 private int outstandingUnconfirmedMessages = 0;
 	 
@@ -42,7 +63,9 @@ public class ConnectionStage extends PronghornStage {
 	 // must be divisable by 4 and >=4 to evenly fit all the packets expected
 	 // the biggest message is also 4 in length so this buffer will support
 	 // parsing of many packets at once as long as its greater than 4.
-	 private final static int INPUT_BUFFER_SIZE = 128;	 
+	 private final static int INPUT_BUFFER_SIZE = 128;
+     private static final byte DUP_BIT = 8;
+     
 	 static {
 		 assert(INPUT_BUFFER_SIZE>=4) : "Must be >= 4";
 		 assert(0==(INPUT_BUFFER_SIZE&0x3)) : "Must be divisable by 4";
@@ -71,9 +94,7 @@ public class ConnectionStage extends PronghornStage {
 		this.apiIn = apiIn;
 		this.apiOut = apiOut;
 		this.idGenOut = idGenOut;   //use low level api, only 1 message type
-		
-		this.inFlightLimit = 10;//TODO: Needs to be configured 
-		
+				
 
 		//must keep re-setting this value
 		RingBuffer.batchAllReleases(apiIn);
@@ -89,6 +110,10 @@ public class ConnectionStage extends PronghornStage {
 		DISCONNECT_MESSAGE.put((byte) 0xE0);
 		DISCONNECT_MESSAGE.put((byte) 0x00);
 		
+		PING_MESSAGE = ByteBuffer.allocate(2);
+		PING_MESSAGE.put((byte) 0xC0); //type/reserved 1100 0000
+		PING_MESSAGE.put((byte) 0x00); //remaining length zero
+		
 		CON_ACK_MSG = new int[]{
                 ConOutConst.MSG_CON_OUT_CONNACK_OK,
 				ConOutConst.MSG_CON_OUT_CONNACK_PROTO,
@@ -101,6 +126,34 @@ public class ConnectionStage extends PronghornStage {
 		CONNECT_MESSAGE = ByteBuffer.allocate(256);//TODO: AAA, no idea what size to make this.
 		
 		inputSocketBuffer = ByteBuffer.allocate(256);//TODO: how big are the acks we need room for?
+		
+		
+	     AFTER_WRITE_DO_NOTHING = new ActivityAfterWrite();
+	     AFTER_WRITE_DO_DISCONNECT = new ActivityAfterWrite(){
+	         public void doIt() {
+	             try {
+	                 channel.close();
+	                 state = 0;
+	                 clearTimestamp();
+	             } catch (IOException e) {
+	                 log.debug("Exception when disconnecting",e);
+	             }
+	             //restore the default behavior
+	             pendingActivityAfterWrite = AFTER_WRITE_DO_NOTHING;
+	         }
+	     };
+	     AFTER_WRITE_CONTINUE_REPLAY = new ActivityAfterWrite() {
+	         public void doIt() {
+	             //TODO READ THE NEXT ITEM TO BE SENT.
+	             
+	             //TODO if there are none turn of replay.
+	             
+	         }
+	     };
+	     pendingActivityAfterWrite = AFTER_WRITE_DO_NOTHING;
+	     
+		
+		
 	}
 
 
@@ -113,7 +166,9 @@ public class ConnectionStage extends PronghornStage {
 	
 	@Override
 	public void run() {
-		
+	    
+	    long now = System.currentTimeMillis();
+	    
 	    //must keep re-setting this value
         RingBuffer.batchAllReleases(apiIn);
         
@@ -124,20 +179,46 @@ public class ConnectionStage extends PronghornStage {
 			2==state) { //connection established now reading
 			
 			if (!channel.isOpen()) {
-				connect();
+				connect(now);
 			}
 	
 			if (channel.isOpen()) {
 			    
 			    if (hasPendingWrites()) {
-			        nonBlockingByteBufferWrite();
+			        nonBlockingByteBufferWrite(now);
 			        if (null!=pendingWriteBufferA || null!=pendingWriteBufferB) {
 			            return;//do not continue because we have pending writes which must be done first.
 			        }			        
 			    }
 			    
+			    //there are no more pending writes at this point.
+			     
+			    //////////
+			    //Ping generation logic
+			    /////////
+		        if (timeStampTooOld(now)) {
+		            //try this first to avoid sending a ping
+		            if (!resendUnconfirmedMessages(now)) {
+		                return;//unable to send anything now, try again later.
+		            }
+		            //no messages to re send so ping must be sent
+		            if (timeStampTooOld(now)) {
+		                PING_MESSAGE.flip();
+                        pendingWriteBufferA = PING_MESSAGE;//send disconnect  0xE0 0x00
+                        if (!nonBlockingByteBufferWrite(now)) {
+                            return;//try again later, can't send ping now.
+                        }
+		            }		            
+		        }
+		        ////////
+		        //End of Ping logic
+		        ////////
 			    
-				try {					
+			    
+				try {		
+				    
+				    //TODO: if the outAPI buffer does not have room for ack, try again later.
+				    
 					int count;					
 					while ( (count = channel.read(inputSocketBuffer)  ) > 0 ) {
 						//we found some new data what to do with it
@@ -145,7 +226,7 @@ public class ConnectionStage extends PronghornStage {
 						assert(inputSocketBuffer.position()>0) : "If count was positive we should have had a value here in the buffer";
 						inputSocketBuffer.flip(); //start reading from zero
 												
-						if (!parseData()) {
+						if (!parseData(now)) {
 							//parse found an error and dropped the connection
 							return;
 						}
@@ -177,79 +258,71 @@ public class ConnectionStage extends PronghornStage {
 			switch (msgIdx) {
 			
 				case ConInConst.MSG_CON_IN_CONNECT:	
-					//set value now so that no more fragments are read before the ack of the connect is recieved.
-					state = 1; //in the connection process
-					log.error("sending a new connect request to server, set state: "+state);
-							
-					
-					//TODO: A, need new method
-					//if (!
-					//RingReader.isEqual(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL,host);
-										
-					//this is only for a new connection as defined from the api
-					commonBuilder.setLength(0);
-					host = RingReader.readASCII(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, commonBuilder).toString();										
-					
-					//must hold the connection message in this byte buffer so we can use it any time we need to re-connect.
-					CONNECT_MESSAGE.clear();
-					RingReader.readBytes(apiIn, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA, CONNECT_MESSAGE);								
-										
-					connect();
-										
+    					//set value now so that no more fragments are read before the ack of the connect is recieved.
+    					state = 1; //in the connection process
+    					log.error("sending a new connect request to server, set state: "+state);
+    						
+    					int port = 1883;//TODO: A, need a way to use both sockets as needed both TLS and non-TLS           
+    					    			          
+    					
+    					//only create new host iff it does not match the old value
+    					if (null==addr || !RingReader.isEqual(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, addr.getHostString())) {
+    					    //this is only for a new connection as defined from the api
+    					    commonBuilder.setLength(0);
+    					    addr = new InetSocketAddress(RingReader.readASCII(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, commonBuilder).toString(), port);
+    					    //the above replacement may cause some garbage however none will be created upon connect and disconnect.
+    					    //TOOD:D if it should become important however even this garbage can be eliminated.
+    					}
+    						    					
+    					
+    					//must hold the connection message in this byte buffer so we can use it any time we need to re-connect.
+    					CONNECT_MESSAGE.clear();
+    					RingReader.readBytes(apiIn, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA, CONNECT_MESSAGE);								
+    										
+    					connect(now);
+    										
 					break;
 				case ConInConst.MSG_CON_IN_DISCONNECT:
-					assert(1!=state);
-					
-					log.error("disconnect started");
-					
-					if (!channel.isOpen()) {
-						//unable to disconnect because it has already been done
-						state = 0;						
-						return;				
-					}
-										
-					if (2 == state && channel.isOpen()) {
-					//	try {							
-							DISCONNECT_MESSAGE.flip();
-							pendingWriteBufferA = DISCONNECT_MESSAGE;//send disconnect  0xE0 0x00
-							nonBlockingByteBufferWrite();
-															
-							//TODO: AAA async is making this hard. when to close?
-							//channel.close();
-					//	} catch (IOException e) {
-					//		log.error("Unable to process disconnect from API",e);
-					//	}
-					} else {
-						log.error("warning something happended and disconnect found state to be :"+state);
-					}
-					state = 0; //TODO: once defined these states need to be static constants
-					log.error("disconnect finished state: "+state);
-					
+    					assert(1!=state);								
+    					if (!channel.isOpen()) {//unable to disconnect because it has already been done
+    						state = 0;						
+    						return;				
+    					}										
+    					if (2 == state && channel.isOpen()) {					    			
+    							DISCONNECT_MESSAGE.flip();
+    							pendingWriteBufferA = DISCONNECT_MESSAGE;//send disconnect  0xE0 0x00
+    							pendingActivityAfterWrite=AFTER_WRITE_DO_DISCONNECT;
+    							nonBlockingByteBufferWrite(now);
+    							
+    					} else {
+    						log.error("warning something happended and disconnect found state to be :"+state);
+    						state = 0; //TODO: once defined these states need to be static constants
+    						clearTimestamp();
+    					}
 					break;
 				case ConInConst.MSG_CON_IN_PUBLISH:
-					assert(1!=state);
-					
-					if (state==0) {
-						//TODO: error, called publish before connect.
-						
-						return;
-					}
-					if (!channel.isOpen()) {						
-						connect();						
-						if (!channel.isOpen()) {
-														
-							//TODO: AAA, we have already taken the message so we need a flag to re-enter to this point
-							return;//try again later, unable to connect right now
-							
-						}						
-					}
-					
-					outstandingUnconfirmedMessages += RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS); //note that we added 2 for each qos of 2
-					
-                    publish();
-					
-                    //TODO: AAAAAAAAAAAAAAAAAAAAAAA, modify dup bit!!!
-                                        
+    					assert(1!=state);
+    					
+    					if (state==0) {
+    						//TODO: error, called publish before connect.
+    						
+    						return;
+    					}
+    					if (!channel.isOpen()) {						
+    						connect(now);						
+    						if (!channel.isOpen()) {
+    														
+    							//TODO: AAA, we have already taken the message so we need a flag to re-enter to this point
+    							return;//try again later, unable to connect right now
+    							
+    						}						
+    					}
+    					
+    					outstandingUnconfirmedMessages += RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS); //note that we added 2 for each qos of 2
+    					
+                        publish(now);					       
+                        setDupBitOn();
+                       
 					break;
 						
 			}
@@ -273,9 +346,33 @@ public class ConnectionStage extends PronghornStage {
 		
 	}
 
-	private ByteBuffer pendingWriteBufferA;
-	private ByteBuffer pendingWriteBufferB;
-    
+	private void dropConnection(Exception reason) {
+	        try {
+	            log.warn("Deconnect initiated due to exception:",reason);
+	            channel.close();
+	            state = 0;
+	        } catch (IOException e) {
+	            log.debug("Exception when disconnecting",e);
+	        }
+	}
+	
+	private void dropConnection(String reason) {
+	    try {
+	        log.warn("Deconnect initiated due to:",reason);
+            channel.close();
+            state = 0;
+        } catch (IOException e) {
+            log.debug("Exception when disconnecting",e);
+        }
+	}
+
+    private void setDupBitOn() {
+        //set the dup bit in case this gets sent again.
+        RingReader.readBytesBackingArray(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA)
+                 [RingReader.readBytesPosition(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA) &
+                  RingReader.readBytesMask(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA)] |= DUP_BIT;
+    }
+
 
     private boolean hasPendingWrites() {
         return (null!=pendingWriteBufferA)&&(pendingWriteBufferA.hasRemaining()) ||
@@ -283,40 +380,55 @@ public class ConnectionStage extends PronghornStage {
     }
 
 
-    private void publish() {
+    private boolean publish(long now) {
         pendingWriteBufferA = RingReader.wrappedUnstructuredLayoutBufferA(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA);
         pendingWriteBufferB = RingReader.wrappedUnstructuredLayoutBufferB(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA);
         
         assert(pendingWriteBufferA.remaining()>0): "The packed data must be found in the buffer";
                          
-        nonBlockingByteBufferWrite();
+        return nonBlockingByteBufferWrite(now);
     }
 
 
-
-    private void nonBlockingByteBufferWrite() {
+    /**
+     * Returns true if all the data was written, false otherwise.
+     * Continue to call this method until true is returned.
+     * 
+     * @param now
+     * @return
+     */
+    private boolean nonBlockingByteBufferWrite(long now) {
         if (null!= pendingWriteBufferA && pendingWriteBufferA.hasRemaining()) { 
         	try {
-        		channel.write(pendingWriteBufferA);
+        		if (channel.write(pendingWriteBufferA)>0) {
+        		    touchTimestamp(now);
+        		}
         	} catch (IOException e) {
-        		// TODO Auto-generated catch block
-        		e.printStackTrace();
-        	}	//send disconnect  0xE0 0x00
+        	    dropConnection(e);
+        	    return false;
+        	}	
         }
         
         if ((null == pendingWriteBufferA || !pendingWriteBufferA.hasRemaining()) && null!=pendingWriteBufferB && pendingWriteBufferB.hasRemaining()) { 
             pendingWriteBufferA = null;
             try {
-        		channel.write(pendingWriteBufferB);
+        		if (channel.write(pendingWriteBufferB)>0) {
+        		    touchTimestamp(now);
+        		}
         	} catch (IOException e) {
-        		// TODO Auto-generated catch block
-        		e.printStackTrace();
-        	}	//send disconnect  0xE0 0x00
+        	    dropConnection(e);
+                return false;
+        	}	
         }
         
         if ( null!=pendingWriteBufferB && !pendingWriteBufferB.hasRemaining()) {
             pendingWriteBufferB = null;
         }
+        if (null==pendingWriteBufferA && null==pendingWriteBufferB) {
+            pendingActivityAfterWrite.doIt();
+            return true;
+        } 
+        return false;
     }
 
 
@@ -342,7 +454,7 @@ public class ConnectionStage extends PronghornStage {
 	//0xC0  type/reserved
 	//0x00 remaining length 0
 
-	private boolean parseData() {
+	private boolean parseData(long now) {
 		//we only expect 4 different packet types so this makes a nice conditional tree
 		final int packetType = inputSocketBuffer.get();						
 		final int length = inputSocketBuffer.get(); //TODO: what if we have no more to read here??
@@ -350,14 +462,14 @@ public class ConnectionStage extends PronghornStage {
 			//1010 1111 mask for PUBACK 0100 0000 or PUBREC 0101 0000
 			//second byte must always be 2 (the number of remaining bytes in the packet)
 			if ((2 != length) || (0 == (0x40 & packetType) ) ) {
-				dropConnection();
+				dropConnection("Packet assumed to be PUBACK but it was malformed.");
 				return false;
 			}
 			
 			final int msb = inputSocketBuffer.get();						
 			final int lsb = inputSocketBuffer.get();
 			//This is needed for both QoS 1 and 2
-			releaseMessage((msb << 16) | (0xFF & lsb));
+			int packetId = (msb << 16) | (0xFF & lsb);
 					
 			//NOTE: PUBACK does not need any further work, we have already released the message
 			//        PUBACK - ack from our publish of a QOS 1 message
@@ -376,19 +488,19 @@ public class ConnectionStage extends PronghornStage {
 				//        LSB PacketID low
 				
                 RingWriter.blockWriteFragment(apiOut, ConOutConst.MSG_CON_OUT_PUB_REC);
-                //TODO: set and send the packetID.
-                RingWriter.publishWrites(apiOut);
-                
+                RingWriter.writeInt(apiOut, ConOutConst.CON_OUT_PUB_REC_FIELD_PACKETID, packetId);                
 				
 			} else {
 
 			    RingWriter.blockWriteFragment(apiOut, ConOutConst.MSG_CON_OUT_PUB_ACK);
-			    //TODO: set and send the packetID.
-                RingWriter.publishWrites(apiOut);
+			    RingWriter.writeInt(apiOut, ConOutConst.CON_OUT_PUB_ACK_FIELD_PACKETID, packetId); 
 			    
 			}
+			RingWriter.publishWrites(apiOut);
 							
-			//TODO: delete the timekeeper and do it later
+			
+			releaseMessage(packetId); 
+			
 			
 		} else {		    
 			
@@ -404,7 +516,7 @@ public class ConnectionStage extends PronghornStage {
 					// 0x01 reserved with low session present bit
 					// 0x?? connection return code 0 ok, 1 bad proto, 2, bad id 3 no server 4 bad userpass 5 not auth  6-255 reserved
 					if ((2!=length) || (0x20 != packetType)) {
-						dropConnection();
+					    dropConnection("Packet assumed to be CONNACK but it was malformed.");
 						return false;
 					}
 					
@@ -420,9 +532,12 @@ public class ConnectionStage extends PronghornStage {
 					}
 					log.error("got ack from server connect state :"+state);
 					
-					//TODO: B refactor to no block this call!!!
+					//TODO: B refactor to no block this call!!! NO just ensure it never blocks by check of queue size before parse.
 				    RingWriter.blockWriteFragment(apiOut, CON_ACK_MSG[connectionReturnCode]);
 					RingWriter.publishWrites(apiOut);
+									
+					//Upon reconnection must always send unconfirmed messages
+					resendUnconfirmedMessages(now);
 			
 				} else {
 
@@ -433,7 +548,7 @@ public class ConnectionStage extends PronghornStage {
 					// LSB PacketID low
 					
 					if ((2!=length) || (0x70 != packetType)) {
-						dropConnection();
+					    dropConnection("Packet assumed to be PUBCOMP but it was malformed.");
 						return false;
 					}
 					
@@ -454,32 +569,44 @@ public class ConnectionStage extends PronghornStage {
 				//0xD0  type//reserved  1101 0000
 				//0x00  remaining length 0
 				if ((0!=length) || (0xD0 != packetType)) {
-					dropConnection();
+				    dropConnection("Packet assumed to be PINGRESP but it was malformed.");
 					return false;
 				}
 				processPingResponse();
 			}
 			
 		}
+		
+		//upon successful parse always update time-stamp, this include conAck 
+		touchTimestamp(now);
+		
 		return true;
 	}
 
-//PINGREQ (two bytes)
-	//0xC0  type/reserved 1100 0000
-	//0x00   remaining length
 
-	private void processPingResponse() {
-		
-		//TODO: clear the flag that was set when we sent the ping
-		
-		
+	private void touchTimestamp(long now) {
+	    lastTimestamp = now;
+    }
+
+	private void clearTimestamp() {
+	    lastTimestamp = 0;
 	}
+
+	private boolean timeStampTooOld(long now) {
+	    return (now-lastTimestamp)>Settings.TIME_LIMIT_MS;
+	}
+
+    private void processPingResponse() {
+        unconfirmedPings--;
+	}
+    
 
 	private void releaseMessage(int packetId) {	    
 	        log.error("release message called for packetId:"+packetId);
 	    	       
 	        RingBuffer.replayUnReleased(apiIn);
 	        long releaseUpTo = RingBuffer.getWorkingTailPosition(apiIn);
+ //       int relaseUpToBytes = RingBuffer.get
 	        boolean endFound = false;
 	        while (RingBuffer.isReplaying(apiIn) && RingReader.tryReadFragment(apiIn)) {
 	            
@@ -514,18 +641,19 @@ public class ConnectionStage extends PronghornStage {
 	        
 	        RingBuffer.cancelReplay(apiIn);
 	        
+	        //where is the byte and primary position
 	        
 	        //release up to ...
 	        //  TODO:  release contigious block found   
             //RingReader.releaseReadLock(apiIn);
-            //RingBuffer.releaseAllBatchedReads(apiIn);
+     //       RingBuffer.releaseAllBatchedReads(apiIn);
 	        
-	        //TODO: Need to stop high level api from Auto release of messages
-	    
+	        //TODO: Need to stop high level api from Auto release of messages	    
 		
 	}
 	
-	private void resendUnconfirmedMessages() {
+	
+	private boolean resendUnconfirmedMessages(long now) {
 	    
 	    RingBuffer.replayUnReleased(apiIn);
         while (RingBuffer.isReplaying(apiIn) && RingReader.tryReadFragment(apiIn)) {
@@ -537,72 +665,45 @@ public class ConnectionStage extends PronghornStage {
                 int qos = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
                 if (qos>0) {
                     //re-send these
-                    publish(); //TODO: this should be non blocking?
+                    if (!publish(now)) {
+                        
+                        //we are in replay mode and this must be remembered.
+                        
+                        return false; //try again later. TODO: B, should remember where we left off?
+                    }
                 }
             }      
         }        
         RingBuffer.cancelReplay(apiIn);
+        return true;
 	}
 	
 
-	private void dropConnection() {
-		if (channel.isOpen()) {
-			try {
-				channel.close();
-			} catch (IOException e) {
-				log.error("Unable to close", e);
-			}
-		}
-		//state is not changed so we can reconnect until the APIStage instance requests a disconnect.
-	}
 
+	private boolean connect(long now) {
 
-	private boolean connect() {
-		//TLS     socket 8883
-		//non-tls socket 1883
-		
-		int port = 1883;//TODO: A, need a way to use both sockets as needed
-		//TODO: B research how to support both TLS and non-TLS			
-		
 		//Note this connection message can also be kicked off because the expected state is connected and the connection was lost.
-		//    create socket and connect when we get the connect message		
+		//     create socket and connect when we get the connect message		
 		try {
-
-			SocketAddress addr = new InetSocketAddress(host, port); //TODO:AA, must move object create. and replace the holding of host, not needed.
-			SocketChannel localChannel = SocketChannel.open();									
-			channel = (SocketChannel)localChannel.configureBlocking(false); 
+			channel = (SocketChannel)SocketChannel.open().configureBlocking(false); 
+			assert(!channel.isBlocking()) : "Blocking must be turned off for all socket connections";						
+			channel.connect(addr); 
 						
 			
-			assert(!channel.isBlocking()) : "Blocking must be turned off for all socket connections";
-			
-			channel.connect(addr); //TODO: do this earlier ?
-			
-			
-			while (!channel.finishConnect()) { // TODO: make non blocking				
+			// TODO: make non blocking, will need new flag for pending work which does not check the two null fields,  this may also clean that logic !?!				
+			while (!channel.finishConnect()) {
 			}
 
 			
-			CONNECT_MESSAGE.flip();
-						
-		//	pendingWriteBufferA = CONNECT_MESSAGE;
-		//	nonBlockingByteBufferWrite();
-			//TODO://must add behavior object in to follow up with end of write, this is required for resend of confirmed messages conitnuation.
-			
-			while (CONNECT_MESSAGE.hasRemaining()) {
-				//TODO: make non blocking
-				channel.write(CONNECT_MESSAGE);
-			}
-				
-
+			CONNECT_MESSAGE.flip();						
+			pendingWriteBufferA = CONNECT_MESSAGE;
+			return nonBlockingByteBufferWrite(now);			
 
 		} catch (Throwable t) {
 			log.error("Unable to connect", t);
 			return false;
-		}
-		resendUnconfirmedMessages();
-		return true;
+		}		
 	}
-
 
 
 }
