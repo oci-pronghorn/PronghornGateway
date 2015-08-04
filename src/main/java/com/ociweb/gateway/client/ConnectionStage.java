@@ -144,19 +144,54 @@ public class ConnectionStage extends PronghornStage {
 	     };
 	     AFTER_WRITE_CONTINUE_REPLAY = new ActivityAfterWrite() {
 	         public void doIt() {
-	             //TODO READ THE NEXT ITEM TO BE SENT.
 	             
-	             //TODO if there are none turn of replay.
+	             if (RingBuffer.isReplaying(apiIn)) {
+	                 if (!RingReader.tryReadFragment(apiIn)) {//has side effect to moving cursor so do not skip	                     
+	                     RingBuffer.cancelReplay(apiIn);
+	                     pendingActivityAfterWrite = AFTER_WRITE_DO_NOTHING;
+	                 }
+	                 
+	                 int msgIdx = RingReader.getMsgIdx(apiIn);
+	                 if (ConInConst.MSG_CON_IN_PUBLISH == msgIdx) { //TODO: AA. Add the other message types which need ack.
+	                     int qos = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
+	                     if (qos>0) {//upon ack this qos is changed to -1 to mark that it has been sent.
+	                         
+	                         //TODO: calling publish will call doIt!! 
+	                         if (publish(System.currentTimeMillis())) {
+	                             //TODO: move to next
+	                             
+	                         } else {
+	                             //TODO: do this again without move next
+	                             
+	                         }
+	                         
+	                     }
+	                     
+	                 } 
+	                 
+	                 
+	             } else {	                 
+	                 pendingActivityAfterWrite = AFTER_WRITE_DO_NOTHING;	                 
+	             }	    
 	             
 	         }
 	     };
 	     pendingActivityAfterWrite = AFTER_WRITE_DO_NOTHING;
 	     
 		
-		
 	}
 
-
+    private boolean resendUnconfirmedMessages(long now) {
+        
+        //we must always enter replay mode when we use AFTER_WRITE_CONTINUE_REPLAY
+        RingBuffer.replayUnReleased(apiIn);
+        pendingActivityAfterWrite = AFTER_WRITE_CONTINUE_REPLAY;
+        //do what can be done now, we may get lucky so we do not have to process this later
+        pendingActivityAfterWrite.doIt();
+        //if the state was changed back to do nothing then everything was replayed or there was nothing to be replayed.
+        return AFTER_WRITE_DO_NOTHING == pendingActivityAfterWrite;
+        
+    }
 
 	@Override
 	public void shutdown() {
@@ -606,7 +641,10 @@ public class ConnectionStage extends PronghornStage {
 	    	       
 	        RingBuffer.replayUnReleased(apiIn);
 	        long releaseUpTo = RingBuffer.getWorkingTailPosition(apiIn);
- //       int relaseUpToBytes = RingBuffer.get
+	        int releaseUpToBytes = RingBuffer.getWorkingUnstructuredLayoutRingTailPosition(apiIn);
+  //       int relaseUpToBytes = RingBuffer.get
+	//TOOD: AAA, need primary and secondary position.
+	        
 	        boolean endFound = false;
 	        while (RingBuffer.isReplaying(apiIn) && RingReader.tryReadFragment(apiIn)) {
 	            
@@ -628,6 +666,7 @@ public class ConnectionStage extends PronghornStage {
 	                    //this is the position of the next message
 	                    if (!endFound) {
 	                        releaseUpTo = RingBuffer.getWorkingTailPosition(apiIn);
+	                        releaseUpToBytes = RingBuffer.getWorkingUnstructuredLayoutRingTailPosition(apiIn);
 	                    }
 	                } else {
 	                    int qos = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
@@ -653,30 +692,7 @@ public class ConnectionStage extends PronghornStage {
 	}
 	
 	
-	private boolean resendUnconfirmedMessages(long now) {
-	    
-	    RingBuffer.replayUnReleased(apiIn);
-        while (RingBuffer.isReplaying(apiIn) && RingReader.tryReadFragment(apiIn)) {
-            
-            int msgIdx = RingReader.getMsgIdx(apiIn);
-            //based on type 
-            if (ConInConst.MSG_CON_IN_PUBLISH == msgIdx) {
 
-                int qos = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
-                if (qos>0) {
-                    //re-send these
-                    if (!publish(now)) {
-                        
-                        //we are in replay mode and this must be remembered.
-                        
-                        return false; //try again later. TODO: B, should remember where we left off?
-                    }
-                }
-            }      
-        }        
-        RingBuffer.cancelReplay(apiIn);
-        return true;
-	}
 	
 
 

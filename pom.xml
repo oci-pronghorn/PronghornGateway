@@ -36,12 +36,19 @@
           <version>1.7.12</version>
           <scope>runtime</scope>
         </dependency>   
-        
+
+	
         <!-- This block added just to test if we can get Proguard to recoginze we never used them and then delete them
              jFAST needs to have a pre-process stage where we can code generate what is needed for the template then
              the resources folder can remain empty, and we will fail back to interpret or remove interpret code.
          -->
         <!--
+        <dependency> MAY WANT TO INTEGRATE THIS SINCE IT PASSES AND SEEMS TO PLAY NICE
+          <groupId>com.codahale.metrics</groupId>
+          <artifactId>metrics-core</artifactId>
+          <version>3.0.2</version>
+        </dependency>
+      
    		<dependency>
    		    <groupId>com.ociweb</groupId>
             <version>0.0.1-SNAPSHOT</version>
