@@ -123,9 +123,23 @@ public class ConnectionStage extends PronghornStage {
 				ConOutConst.MSG_CON_OUT_CONNACK_AUTH 
 				}; 
 		
-		CONNECT_MESSAGE = ByteBuffer.allocate(256);//TODO: AAA, no idea what size to make this.
+		//TOOD: we must finish full publish and subcribe before teh 17th of aug.
+		
+		//The biggest message supported would be 6*theBiggestVar field which would be
+		// the total var space divided by the maximum var fields 
+		CONNECT_MESSAGE = ByteBuffer.allocate(256);//TODO: AAA, no idea what size to make this. need max size of message from ring buffer
 		
 		inputSocketBuffer = ByteBuffer.allocate(256);//TODO: how big are the acks we need room for?
+		
+		  //Parsed messages by size for publish only
+	    //PUBACK
+	    //PUBREC
+	    //CONACK
+	    //PUBCOMP
+	    //PINGRESP
+	    //for subscribe the input may be much larger and based on ring size.
+		
+		
 		
 		
 	     AFTER_WRITE_DO_NOTHING = new ActivityAfterWrite();
@@ -144,38 +158,43 @@ public class ConnectionStage extends PronghornStage {
 	     };
 	     AFTER_WRITE_CONTINUE_REPLAY = new ActivityAfterWrite() {
 	         public void doIt() {
-	             
-	             if (RingBuffer.isReplaying(apiIn)) {
-	                 if (!RingReader.tryReadFragment(apiIn)) {//has side effect to moving cursor so do not skip	                     
-	                     RingBuffer.cancelReplay(apiIn);
-	                     pendingActivityAfterWrite = AFTER_WRITE_DO_NOTHING;
-	                 }
+	             //all the bytes were written
+	             while (RingBuffer.isReplaying(apiIn) && RingReader.tryReadFragment(apiIn)) {
 	                 
 	                 int msgIdx = RingReader.getMsgIdx(apiIn);
-	                 if (ConInConst.MSG_CON_IN_PUBLISH == msgIdx) { //TODO: AA. Add the other message types which need ack.
+	                 if (ConInConst.MSG_CON_IN_PUBLISH == msgIdx) { 
 	                     int qos = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
-	                     if (qos>0) {//upon ack this qos is changed to -1 to mark that it has been sent.
+	                     if (qos>0) {//upon ack this qos is changed to <0 to mark that it has been sent.
 	                         
-	                         //TODO: calling publish will call doIt!! 
-	                         if (publish(System.currentTimeMillis())) {
-	                             //TODO: move to next
-	                             
-	                         } else {
-	                             //TODO: do this again without move next
-	                             
-	                         }
+	                        pendingWriteBufferA = RingReader.wrappedUnstructuredLayoutBufferA(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA);
+                            pendingWriteBufferB = RingReader.wrappedUnstructuredLayoutBufferB(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA);
+                            
+                            assert(pendingWriteBufferA.remaining()>0): "The packed data must be found in the buffer";
+                            //return ensures that we will come back in to run the next one after the above is written
+                            return;                            
+	                     }	                     
+	                 } else if (ConInConst.MSG_CON_IN_PUB_REL == msgIdx) {
+	                     if (RingReader.readInt(apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETID)>0) {
+	                         
+                            pendingWriteBufferA = RingReader.wrappedUnstructuredLayoutBufferA(apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETDATA);
+	                        pendingWriteBufferB = RingReader.wrappedUnstructuredLayoutBufferB(apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETDATA);
+	                          
+	                        assert(pendingWriteBufferA.remaining()>0): "The packed data must be found in the buffer";
+	                        //return ensures that we will come back in to run the next one after the above is written
+	                        return;                            
 	                         
 	                     }
 	                     
-	                 } 
-	                 
-	                 
-	             } else {	                 
-	                 pendingActivityAfterWrite = AFTER_WRITE_DO_NOTHING;	                 
-	             }	    
+	                     
+	                 }
+	             } 
+	             RingBuffer.cancelReplay(apiIn);                 
+	             pendingActivityAfterWrite = AFTER_WRITE_DO_NOTHING;	                 
+	             	    
 	             
 	         }
 	     };
+	     
 	     pendingActivityAfterWrite = AFTER_WRITE_DO_NOTHING;
 	     
 		
@@ -220,8 +239,7 @@ public class ConnectionStage extends PronghornStage {
 			if (channel.isOpen()) {
 			    
 			    if (hasPendingWrites()) {
-			        nonBlockingByteBufferWrite(now);
-			        if (null!=pendingWriteBufferA || null!=pendingWriteBufferB) {
+			        if (!nonBlockingByteBufferWrite(now)) {
 			            return;//do not continue because we have pending writes which must be done first.
 			        }			        
 			    }
@@ -461,7 +479,7 @@ public class ConnectionStage extends PronghornStage {
         }
         if (null==pendingWriteBufferA && null==pendingWriteBufferB) {
             pendingActivityAfterWrite.doIt();
-            return true;
+            return AFTER_WRITE_DO_NOTHING == pendingActivityAfterWrite; //true only if everthing was complete
         } 
         return false;
     }
@@ -485,10 +503,12 @@ public class ConnectionStage extends PronghornStage {
 	}
 
 	
-	//PINTREQ - generate send
+	//PINGREQ - generate send
 	//0xC0  type/reserved
 	//0x00 remaining length 0
 
+	
+	
 	private boolean parseData(long now) {
 		//we only expect 4 different packet types so this makes a nice conditional tree
 		final int packetType = inputSocketBuffer.get();						
@@ -524,18 +544,15 @@ public class ConnectionStage extends PronghornStage {
 				
                 RingWriter.blockWriteFragment(apiOut, ConOutConst.MSG_CON_OUT_PUB_REC);
                 RingWriter.writeInt(apiOut, ConOutConst.CON_OUT_PUB_REC_FIELD_PACKETID, packetId);                
-				
+                releaseMessage(packetId,2);
+                
 			} else {
 
 			    RingWriter.blockWriteFragment(apiOut, ConOutConst.MSG_CON_OUT_PUB_ACK);
 			    RingWriter.writeInt(apiOut, ConOutConst.CON_OUT_PUB_ACK_FIELD_PACKETID, packetId); 
-			    
+			    releaseMessage(packetId,1);			    
 			}
-			RingWriter.publishWrites(apiOut);
-							
-			
-			releaseMessage(packetId); 
-			
+			RingWriter.publishWrites(apiOut);					
 			
 		} else {		    
 			
@@ -589,7 +606,10 @@ public class ConnectionStage extends PronghornStage {
 					
 					final int msb = inputSocketBuffer.get();						
 					final int lsb = inputSocketBuffer.get();
+					int packetId = (msb << 16) | (0xFF & lsb);
 					
+					//release the pubRel to prevent it from getting sent
+				    releaseMessage(packetId,3);
 					//TODO: do the last step for QoS2
 					
 					//clear the pubRel
@@ -636,14 +656,9 @@ public class ConnectionStage extends PronghornStage {
 	}
     
 
-	private void releaseMessage(int packetId) {	    
-	        log.error("release message called for packetId:"+packetId);
-	    	       
+	private void releaseMessage(int packetId, int originalQoS) {	    
+ 
 	        RingBuffer.replayUnReleased(apiIn);
-	        long releaseUpTo = RingBuffer.getWorkingTailPosition(apiIn);
-	        int releaseUpToBytes = RingBuffer.getWorkingUnstructuredLayoutRingTailPosition(apiIn);
-  //       int relaseUpToBytes = RingBuffer.get
-	//TOOD: AAA, need primary and secondary position.
 	        
 	        boolean endFound = false;
 	        while (RingBuffer.isReplaying(apiIn) && RingReader.tryReadFragment(apiIn)) {
@@ -654,47 +669,37 @@ public class ConnectionStage extends PronghornStage {
 	                
 	                int msgPacketId = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETID);
 	                if (packetId == msgPacketId) {
-	                    log.error("found and released "+packetId);
 	                    //we found it, now clear the QoS and confirm that it was valid
-	                    int qos = RingReader.readIntSecure(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS,0);
-	                    if (0==qos) {
-	                        //This is a warning condition where we have already confirmed this message once before
-	                        //TODO: review spec on what should be done if we get 2 acks.
-	                        	                        
-	                        
-	                    }
-	                    //this is the position of the next message
-	                    if (!endFound) {
-	                        releaseUpTo = RingBuffer.getWorkingTailPosition(apiIn);
-	                        releaseUpToBytes = RingBuffer.getWorkingUnstructuredLayoutRingTailPosition(apiIn);
+	                    int qos = RingReader.readIntSecure(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS,-originalQoS);
+	                    if (qos<=0) {
+	                        log.warn("reduntant ack");
 	                    }
 	                } else {
 	                    int qos = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
-	                    //this one does not match and so must not be released
-	                    endFound = (0!=qos);
+	                    endFound |= (qos>0);
 	                }
+	            } else if (ConInConst.MSG_CON_IN_PUB_REL == msgIdx) {
 	                
+	                int msgPacketId = RingReader.readInt(apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETID);
+	                if (packetId == msgPacketId) {
+	                    //we found the pubRel now clear it by setting the packet id negative
+	                    RingReader.readIntSecure(apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETID,-msgPacketId);
+	                }
 	            }
 	            
+	            if (!endFound) {
+	                //release everything up to this point, only done while
+	                //the end is not found because we can only release the contiguous 
+	                //messages until we reach the fist unconfirmed message.
+                    RingBuffer.releaseReadLock(apiIn);
+	            }
 	        }
 	        
 	        RingBuffer.cancelReplay(apiIn);
-	        
-	        //where is the byte and primary position
-	        
-	        //release up to ...
-	        //  TODO:  release contigious block found   
-            //RingReader.releaseReadLock(apiIn);
-     //       RingBuffer.releaseAllBatchedReads(apiIn);
-	        
-	        //TODO: Need to stop high level api from Auto release of messages	    
-		
+	        RingBuffer.releaseAllBatchedReads(apiIn);
+	        	    		
 	}
 	
-	
-
-	
-
 
 	private boolean connect(long now) {
 
@@ -704,15 +709,14 @@ public class ConnectionStage extends PronghornStage {
 			channel = (SocketChannel)SocketChannel.open().configureBlocking(false); 
 			assert(!channel.isBlocking()) : "Blocking must be turned off for all socket connections";						
 			channel.connect(addr); 
-						
-			
-			// TODO: make non blocking, will need new flag for pending work which does not check the two null fields,  this may also clean that logic !?!				
-			while (!channel.finishConnect()) {
-			}
-
-			
 			CONNECT_MESSAGE.flip();						
 			pendingWriteBufferA = CONNECT_MESSAGE;
+				
+			
+			// TODO: make non blocking, Need new doBeforeMethod							
+			while (!channel.finishConnect()) {
+			}
+			
 			return nonBlockingByteBufferWrite(now);			
 
 		} catch (Throwable t) {

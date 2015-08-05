@@ -37,30 +37,6 @@
           <scope>runtime</scope>
         </dependency>   
 
-	
-        <!-- This block added just to test if we can get Proguard to recoginze we never used them and then delete them
-             jFAST needs to have a pre-process stage where we can code generate what is needed for the template then
-             the resources folder can remain empty, and we will fail back to interpret or remove interpret code.
-         -->
-        <!--
-        <dependency> MAY WANT TO INTEGRATE THIS SINCE IT PASSES AND SEEMS TO PLAY NICE
-          <groupId>com.codahale.metrics</groupId>
-          <artifactId>metrics-core</artifactId>
-          <version>3.0.2</version>
-        </dependency>
-      
-   		<dependency>
-   		    <groupId>com.ociweb</groupId>
-            <version>0.0.1-SNAPSHOT</version>
-            <artifactId>PronghornCompression</artifactId>
-   		</dependency>
-   		<dependency>
-   		     <groupId>com.ociweb</groupId>
- 			 <version>0.0.1-SNAPSHOT</version>
- 			 <artifactId>jFAST</artifactId>
-   		</dependency>
-   		-->
-   		<!-- end of Proguard test, dead jars, this works except that the resources of each jar kept, TODO: is there a solution to this?. -->
    		
       	<dependency>
 		      <groupId>junit</groupId>
@@ -126,18 +102,11 @@
 	
 	<build>
     
-         <plugins>
-	    <plugin>
-              <artifactId>maven-compiler-plugin</artifactId>
-              <version>3.0</version>
-	      <configuration>
-		        <source>1.7</source>  
-         		<target>1.7</target>
-	      </configuration>
-	    </plugin>
+     <plugins>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.0</version>
           <configuration>
             <source>1.7</source>
             <target>1.7</target>
