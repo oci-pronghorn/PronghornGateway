@@ -192,9 +192,7 @@ public class MQTTEncoder {
 		int length = topicLength + 2 + payloadLength + (packetId>=0 ? 2 : 0); //replace with  (0x2&(~packetId)>>30) //TOOD: B, or od this external and break method up.
 		
 		assert(length<(topicMask+payloadMask)) : "Length is far too large and can not be right"; //TODO: C, be sure server side checks this and rejects bad values.
-		
-		System.err.println("write packet length of "+length);
-		
+				
 		final int pubHead = 0x30 | (0x3&(qos<<1)) | 1&retain; //bit 3 dup is zero which is modified later
 		bytePos = appendFixedHeader(bytePos, byteMask, byteBuffer, pubHead, length); //const and remaining length, 2  bytes
 		assert(topicLength>0);

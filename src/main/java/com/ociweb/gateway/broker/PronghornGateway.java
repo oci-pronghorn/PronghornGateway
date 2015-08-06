@@ -4,8 +4,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.ociweb.gateway.client.APIStage;
 import com.ociweb.gateway.client.ClientAPIFactory;
-import com.ociweb.gateway.client.DemoStage;
-import com.ociweb.gateway.client.DemoStageFactory;
+import com.ociweb.gateway.demo.ClockStageFactory;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 import com.ociweb.pronghorn.stage.scheduling.StageScheduler;
 import com.ociweb.pronghorn.stage.scheduling.ThreadPerStageScheduler;
@@ -15,7 +14,7 @@ public class PronghornGateway {
 	public static void main(String[] args) {
 		
 		GraphManager gm = new GraphManager();
-		APIStage stage = ClientAPIFactory.clientAPI(DemoStageFactory.instance, gm);
+		APIStage stage = ClientAPIFactory.clientAPI(ClockStageFactory.instance, gm);
 		
 		StageScheduler scheduler = new ThreadPerStageScheduler(gm);
 		scheduler.startup();

@@ -17,6 +17,7 @@ import com.ociweb.gateway.common.GVSValidator;
 import com.ociweb.gateway.common.ExpectedUseGeneratorStage;
 import com.ociweb.gateway.common.ExpectedUseValidationStage;
 import com.ociweb.gateway.common.IdGenStage;
+import com.ociweb.gateway.demo.ClockStageFactory;
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.ring.RingBufferConfig;
 import com.ociweb.pronghorn.stage.PronghornStage;
@@ -62,7 +63,7 @@ public class TestStages {
 	@Test
 	public void testStagesExpectedUseCase() throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
 		GraphManager gm = new GraphManager();		
-		ClientAPIFactory.clientAPI(DemoStageFactory.instance, gm);
+		ClientAPIFactory.clientAPI(ClockStageFactory.instance, gm);
 		
 		//we do not know which id will be given to which stage so walk them all and do the right test for each
 		int stageId = PronghornStage.totalStages();
@@ -99,7 +100,7 @@ public class TestStages {
 	@Test
 	public void testStagesFuzz() throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
 		GraphManager gm = new GraphManager();		
-		ClientAPIFactory.clientAPI(DemoStageFactory.instance, gm);
+		ClientAPIFactory.clientAPI(ClockStageFactory.instance, gm);
 		
 		//  
 		

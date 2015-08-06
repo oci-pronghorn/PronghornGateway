@@ -60,10 +60,10 @@ public class IntegrationTest {
 	@AfterClass
 	public static void shutdown() {
 	    
-//	    if (qos0TestTotalCount<(qos0ConnectionIterations*qos0Messages) ) {
+//	    if (0!=qos0TestTotalCount && qos0TestTotalCount<(qos0ConnectionIterations*qos0Messages) ) {
 //            fail("too few messages");
 //        }	 
-//       if (qos1TestTotalCount<(qos1ConnectionIterations*qos1Messages) ) {
+//       if (0!=qos1TestTotalCount && qos1TestTotalCount<(qos1ConnectionIterations*qos1Messages) ) {
 //            fail("too few messages");
 //        }      
 	    
@@ -71,7 +71,10 @@ public class IntegrationTest {
 			client.disconnect();
 			client.close();
 		} catch (MqttException e) {
-			fail(e.getMessage());
+		    //we want to disconnect so if its already done this is not a problem
+		    if (!e.getMessage().contains("Client is disconnected")) {
+		        fail(e.getMessage());
+		    }
 		}
 		
 		server.stopServer();
@@ -117,7 +120,7 @@ public class IntegrationTest {
            public void businessLogic() {
                
                if (--toSend>=0) {
-                   System.err.println("sent connect, disconect "+toSend);
+                  
                    CharSequence url = "127.0.0.1";
                    int conFlags = 0;//MQTTEncoder.CONNECT_FLAG_CLEAN_SESSION_1; //do not clean session
                    
@@ -128,7 +131,7 @@ public class IntegrationTest {
                    byte[] username = empty;
                    byte[] passwordBytes = empty;
                    
-                   while (!requestConnect(url, conFlags, willTopic, willMessageBytes, username, passwordBytes)) {                  
+                   while (!requestConnect(url, conFlags, willTopic,0,0,0, willMessageBytes,0,0,0, username, passwordBytes)) {                  
                    }
                            
                    final int qualityOfService = 1;
@@ -198,7 +201,7 @@ public class IntegrationTest {
 		public void businessLogic() {
 			
 			if (--toSend>=0) {
-				System.err.println("sent connect, disconect "+toSend);
+				
 				CharSequence url = "127.0.0.1";
 				int conFlags = 0;//MQTTEncoder.CONNECT_FLAG_CLEAN_SESSION_1; //do not clean session
 				
@@ -209,7 +212,7 @@ public class IntegrationTest {
 				byte[] username = empty;
 				byte[] passwordBytes = empty;
 				
-				while (!requestConnect(url, conFlags, willTopic, willMessageBytes, username, passwordBytes)) {					
+				while (!requestConnect(url, conFlags, willTopic,0,0,0, willMessageBytes,0,0,0, username, passwordBytes)) {					
 				}
 						
 				final int qualityOfService = 0;
@@ -264,7 +267,7 @@ public class IntegrationTest {
 				byte[] username = empty;
 				byte[] passwordBytes = empty;
 				
-				while (!requestConnect(url, conFlags, willTopic, willMessageBytes, username, passwordBytes)) {
+				while (!requestConnect(url, conFlags, willTopic,0,0,0, willMessageBytes,0,0,0, username, passwordBytes)) {
 					
 				}
 							
@@ -405,24 +408,24 @@ public class IntegrationTest {
         scheduler.awaitTermination(3, TimeUnit.SECONDS);		
 	}
 	    
-//    @Test       
-//    public void testQoS1() {
-//        //for this test we will use a known working broker and known working subscriber (both from eclipse)
-//        //we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.
-//        
-//        GraphManager gm = new GraphManager();
-//        APIStageFactory factory = new APIStageFactory() {
-//            @Override
-//            public APIStage newInstance(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn) {
-//                return new IntegrationTestQOS1Publish(gm, unusedIds, connectionOut, connectionIn, qos1ConnectionIterations, qos1Messages);
-//            }           
-//        };
-//        ClientAPIFactory.clientAPI(factory ,gm); //TODO:: Make own stage and in run measure to send value.
-//        
-//        StageScheduler scheduler = new ThreadPerStageScheduler(gm);
-//        scheduler.startup();
-//        scheduler.awaitTermination(3, TimeUnit.SECONDS);        
-//    }
+    @Test       
+    public void testQoS1() {
+        //for this test we will use a known working broker and known working subscriber (both from eclipse)
+        //we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.
+        
+        GraphManager gm = new GraphManager();
+        APIStageFactory factory = new APIStageFactory() {
+            @Override
+            public APIStage newInstance(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn) {
+                return new IntegrationTestQOS1Publish(gm, unusedIds, connectionOut, connectionIn, qos1ConnectionIterations, qos1Messages);
+            }           
+        };
+        ClientAPIFactory.clientAPI(factory ,gm); //TODO:: Make own stage and in run measure to send value.
+        
+        StageScheduler scheduler = new ThreadPerStageScheduler(gm);
+        scheduler.startup();
+        scheduler.awaitTermination(3, TimeUnit.SECONDS);        
+    }
     
     
 //    @Test       

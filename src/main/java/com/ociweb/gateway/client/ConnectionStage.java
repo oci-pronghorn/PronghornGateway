@@ -306,14 +306,14 @@ public class ConnectionStage extends PronghornStage {
 			RingReader.tryReadFragment(apiIn)) {
 			
 			int msgIdx = RingReader.getMsgIdx(apiIn);
-			log.error("now reading message "+ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]);
+			log.debug("now reading message {}",ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]);
 			
 			switch (msgIdx) {
 			
 				case ConInConst.MSG_CON_IN_CONNECT:	
     					//set value now so that no more fragments are read before the ack of the connect is recieved.
     					state = 1; //in the connection process
-    					log.error("sending a new connect request to server, set state: "+state);
+    					log.debug("sending a new connect request to server");
     						
     					int port = 1883;//TODO: A, need a way to use both sockets as needed both TLS and non-TLS           
     					    			          
@@ -392,7 +392,8 @@ public class ConnectionStage extends PronghornStage {
 			
 		} else {
 			if (prev!=state) {
-				log.error("STUCK with "+state+ "   "+apiIn);
+			    //may be here when waiting for the broker to startup.
+				log.debug("STUCK with state:{} inputRing: {}",state,apiIn);
 				prev=state;
 			}
 		}
@@ -708,19 +709,17 @@ public class ConnectionStage extends PronghornStage {
 		try {
 			channel = (SocketChannel)SocketChannel.open().configureBlocking(false); 
 			assert(!channel.isBlocking()) : "Blocking must be turned off for all socket connections";						
-			channel.connect(addr); 
-			CONNECT_MESSAGE.flip();						
-			pendingWriteBufferA = CONNECT_MESSAGE;
-				
-			
-			// TODO: make non blocking, Need new doBeforeMethod							
-			while (!channel.finishConnect()) {
+			if (!channel.connect(addr)) {
+			    channel.finishConnect();
 			}
 			
+			CONNECT_MESSAGE.flip();						
+			pendingWriteBufferA = CONNECT_MESSAGE;
 			return nonBlockingByteBufferWrite(now);			
 
 		} catch (Throwable t) {
-			log.error("Unable to connect", t);
+		    //this is not unreasonable if we are waiting for the broker to be started.
+			log.debug("Unable to connect", t);
 			return false;
 		}		
 	}

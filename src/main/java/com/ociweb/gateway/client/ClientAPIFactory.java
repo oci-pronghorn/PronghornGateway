@@ -21,16 +21,9 @@ public class ClientAPIFactory {
 		int queuedConOut = 2;
 		int maxTopicOrPayload = 16;
 		
-		APIStage result = buildInstance(factory, gm, 
+		return buildInstance(factory, gm, 
 				            queuedIds, queuedTimeControl, queuedTimeTrigger, queuedConIn,
 				            queuedConOut, maxTopicOrPayload);
-		
-		//TODO: B, must add way to pass in different schedulers and shut them down.
-//		StageScheduler scheduler = new ThreadPerStageScheduler(gm);
-//		scheduler.startup();
-//		scheduler.shutdown();
-//		scheduler.awaitTermination(10, TimeUnit.MILLISECONDS);
-		return result;
 	}
 
 	//NOTE: this will be generated from the DOT file in future projects, this is here as an example.
