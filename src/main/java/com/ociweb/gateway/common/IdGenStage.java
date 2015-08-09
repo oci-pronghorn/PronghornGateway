@@ -5,6 +5,7 @@ import static com.ociweb.pronghorn.ring.RingBuffer.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.ociweb.gateway.demo.ClockApp;
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
@@ -36,14 +37,14 @@ public class IdGenStage extends PronghornStage {
 	private final int sizeOfFragment;
 	private static final int theOneMsg = 0;// there is only 1 message supported by this stage
 		
-	public IdGenStage(GraphManager graphManager, RingBuffer input, RingBuffer output) {
+	public IdGenStage(GraphManager graphManager, RingBuffer input, RingBuffer output, String rate) {
 		super(graphManager, input, output);
 		this.inputs = new RingBuffer[]{input};
 		this.outputs = new RingBuffer[]{output};
 		assert(RingBuffer.from(input).equals(RingBuffer.from(output))) : "Both must have same message types ";	
 		this.sizeOfFragment = RingBuffer.from(input).fragDataSize[theOneMsg];
 		
-		
+		GraphManager.addAnnotation(graphManager, GraphManager.SCHEDULE_RATE, rate, this);
 	}
 	
 	public IdGenStage(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs) {
@@ -222,9 +223,6 @@ public class IdGenStage extends PronghornStage {
 				return false;
 			}
 		}
-		
-		
-		// TODO Auto-generated method stub
 		return true;
 	}
 

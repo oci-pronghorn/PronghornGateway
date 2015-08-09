@@ -15,22 +15,20 @@ public class ClientAPIFactory {
 	
 	public static APIStage clientAPI(APIStageFactory factory, GraphManager gm) {
 		int queuedIds = 3;
-		int queuedTimeControl = 2;
-		int queuedTimeTrigger = 2;
-		int queuedConIn = 2;
+		int queuedConIn = 2; //TODO: move to factory.
 		int queuedConOut = 2;
-		int maxTopicOrPayload = 16;
 		
 		return buildInstance(factory, gm, 
-				            queuedIds, queuedTimeControl, queuedTimeTrigger, queuedConIn,
-				            queuedConOut, maxTopicOrPayload);
+				            queuedIds, queuedConIn, queuedConOut);
 	}
 
 	//NOTE: this will be generated from the DOT file in future projects, this is here as an example.
-	private static APIStage buildInstance(APIStageFactory factory, GraphManager gm, int queuedIds, int queuedTimeControl, int queuedTimeTrigger, int queuedConIn, int queuedConOut, int maxTopicOrPayload) {
-		RingBufferConfig idGenConfig = new RingBufferConfig(CommonFromFactory.idRangesFROM, queuedIds, 0);		
-		RingBufferConfig connectionInConfig = new RingBufferConfig(ClientFromFactory.connectionInFROM, queuedConIn, maxTopicOrPayload);
-		RingBufferConfig connectionOutConfig = new RingBufferConfig(ClientFromFactory.connectionOutFROM, queuedConOut, maxTopicOrPayload);
+	private static APIStage buildInstance(APIStageFactory factory, GraphManager gm, int queuedIds, int queuedConIn, int queuedConOut) {
+		
+	    String rate = factory.getRate();
+	    RingBufferConfig idGenConfig = new RingBufferConfig(CommonFromFactory.idRangesFROM, queuedIds, 0);		
+		RingBufferConfig connectionInConfig = new RingBufferConfig(ClientFromFactory.connectionInFROM, queuedConIn, factory.getMaxTopicOrPayload());
+		RingBufferConfig connectionOutConfig = new RingBufferConfig(ClientFromFactory.connectionOutFROM, queuedConOut, factory.getMaxTopicOrPayload());
 						
 		RingBuffer unusedIds = new RingBuffer(idGenConfig);
 		RingBuffer releasedIds = new RingBuffer(idGenConfig);
@@ -39,19 +37,20 @@ public class ClientAPIFactory {
 				
 
 		//these instances are all held by the graph which is passed in	
-		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, new IdGenStage(gm, releasedIds, unusedIds));
-		
+		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, new IdGenStage(gm, releasedIds, unusedIds, rate));
 		APIStage apiStage = factory.newInstance(gm, unusedIds, connectionOut, connectionIn);
-		
 		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, apiStage);
-		
-		new ConnectionStage(gm, connectionIn, connectionOut, releasedIds);
-		
-		//TODO: B, replace with JMX version before release.
+		new ConnectionStage(gm, connectionIn, connectionOut, releasedIds, rate.length()>2 ? rate.substring(0, rate.length()-2) : "0", 
+		                    factory.getInFlightLimit(), factory.getTTLSec());
 		
 		
 		//enable monitoring if we have 64mb of memory, //TODO: AAA, do not turn on takes all the memory.
-		if (Runtime.getRuntime().freeMemory()>(64<<20)) {
+		if (factory.isDebug() && Runtime.getRuntime().freeMemory()>(64<<20)) {
+		    
+		    //TODO: add telnet server support so we can control and monitor the server remotely
+		    //      once complete build http server to serve angularJS pages for a better experiance.
+		    
+		    //TODO: B, replace with JMX version before release.
 			Integer defaultMonitorRate = Integer.valueOf(50000000);
 			RingBufferConfig defaultMonitorRingConfig = new RingBufferConfig(CommonFromFactory.monitorFROM, 5, 0);
 		    MonitorConsoleStage.attach(gm,defaultMonitorRate,defaultMonitorRingConfig); 

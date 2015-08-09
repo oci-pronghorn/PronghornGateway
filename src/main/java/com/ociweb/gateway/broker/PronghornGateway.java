@@ -14,7 +14,7 @@ public class PronghornGateway {
 	public static void main(String[] args) {
 		
 		GraphManager gm = new GraphManager();
-		APIStage stage = ClientAPIFactory.clientAPI(ClockStageFactory.instance, gm);
+		APIStage stage = ClientAPIFactory.clientAPI(new ClockStageFactory("1000",true,20,60), gm);
 		
 		StageScheduler scheduler = new ThreadPerStageScheduler(gm);
 		scheduler.startup();

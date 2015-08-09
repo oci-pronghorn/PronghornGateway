@@ -12,13 +12,13 @@ public class APIStage extends PronghornStage {
 	private final RingBuffer idGenIn; //used by same external thread
 	private final RingBuffer toCon;
 	 	
-	private int packetId = -1;
-	private int packetIdLimit = -1;
+	private int nextFreePacketId = -1;
+	private int nextFreePacketIdLimit = -1;
+	private final int ttlSec;
 	
-	
-	private Settings settings = new Settings(); //TODO: passed in on construction?
-	
-  	/**
+	public final byte[] clientId = "somename for this client in UTF8".getBytes(); //same for entire run
+
+	/**
   	 * This first implementation is kept simple until we get a working project.
   	 * 
   	 * The API may need some adjustments based on use cases.
@@ -29,12 +29,14 @@ public class APIStage extends PronghornStage {
 	private static final int theOneMsg = 0;// there is only 1 message supported by this stage
 	
 	
-	protected APIStage(GraphManager graphManager, RingBuffer idGenIn, RingBuffer fromC, RingBuffer toC) {
+	protected APIStage(GraphManager graphManager, RingBuffer idGenIn, RingBuffer fromC, RingBuffer toC, int ttlSec) {
 		super(graphManager, new RingBuffer[]{idGenIn,fromC}, toC);
 	
 		this.idGenIn = idGenIn;
 		this.fromCon = fromC;
 		this.toCon = toC;
+		
+		this.ttlSec = ttlSec;
 			  	
         this.sizeOfPacketIdFragment = RingBuffer.from(idGenIn).fragDataSize[theOneMsg];
         
@@ -151,8 +153,8 @@ public class APIStage extends PronghornStage {
 			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
 			int byteMask = RingBuffer.byteMask(toCon);
 						
-			int len = MQTTEncoder.buildConnectPacket(bytePos, byteBuffer, byteMask, settings.ttlSec, conFlags, 
-					                                 settings.clientId, 0 , settings.clientId.length, 0xFFFF,
+			int len = MQTTEncoder.buildConnectPacket(bytePos, byteBuffer, byteMask, ttlSec, conFlags, 
+					                                 clientId, 0 , clientId.length, 0xFFFF,
 					                                 willTopic, willTopicIdx , willTopicLength, willTopicMask,
 					                                 willMessageBytes, willMessageBytesIdx, willMessageBytesLength, willMessageBytesMask,
 					                                 username, 0, username.length, 0xFFFF, //TODO: add rest of fields
@@ -179,11 +181,11 @@ public class APIStage extends PronghornStage {
 				
 	}
 
-	protected long requestPublish(byte[] topic, int topicIdx, int topicLength, int topicMask, 
+	protected int requestPublish(byte[] topic, int topicIdx, int topicLength, int topicMask, 
 			                   int qualityOfService, int retain, 
 			                   byte[] payload, int payloadIdx, int payloadLength, int payloadMask) {
 				
-		if (packetId >= packetIdLimit) {
+		if (nextFreePacketId >= nextFreePacketIdLimit) {
 			//get next range
 			if (RingBuffer.contentToLowLevelRead(idGenIn, sizeOfPacketIdFragment)) {				
 				loadNextPacketIdRange();				
@@ -197,7 +199,7 @@ public class APIStage extends PronghornStage {
 						
 			RingWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_QOS, qualityOfService);
 			
-			int localPacketId = (0==qualityOfService) ? -1 : packetId++;
+			int localPacketId = (0==qualityOfService) ? -1 : nextFreePacketId++;
 			
 			RingWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETID, localPacketId);
 						
@@ -211,11 +213,11 @@ public class APIStage extends PronghornStage {
 			RingWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
 				
 			RingWriter.publishWrites(toCon);
+			return localPacketId<0 ? 0 : localPacketId;//TODO: we have no id for qos 0 this is dirty.
 		} else {
 			return -1;
 		}
 				
-		return RingBuffer.workingHeadPosition(toCon);
 	}
 
 
@@ -224,8 +226,8 @@ public class APIStage extends PronghornStage {
 		assert(theOneMsg == msgIdx);
 		
 		int range = RingBuffer.takeValue(idGenIn);
-		packetId = 0xFFFF&range;
-		packetIdLimit = 0xFFFF&(range>>16); 
+		nextFreePacketId = 0xFFFF&range;
+		nextFreePacketIdLimit = 0xFFFF&(range>>16); 
 						
 		RingBuffer.releaseReads(idGenIn);
 		RingBuffer.confirmLowLevelRead(idGenIn, sizeOfPacketIdFragment);

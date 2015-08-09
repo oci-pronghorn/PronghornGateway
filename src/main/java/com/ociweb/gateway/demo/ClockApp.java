@@ -26,9 +26,13 @@ public class ClockApp {
         System.out.println("Clock App"); //TODO: report who we are talking to.
         destinationIp = getOptArg("-destination","-d", args, "127.0.0.1");
         qos =           getOptArg("-qos","-q", args, "0");
-        rate =          getOptArg("-rate","-r", args, "100"); //in ms        
-
-        stage = (ClockStage)ClientAPIFactory.clientAPI(ClockStageFactory.instance, gm);
+        rate =          getOptArg("-nsRate","-ns", args, "1000000000"); //in ns, once a second    
+        
+        int ttlSec = 20;
+        int inFlightLimit = 10;
+        boolean debug = Boolean.parseBoolean(getOptArg("-debug","-g", args, "false"));
+        stage = (ClockStage)ClientAPIFactory.clientAPI(new ClockStageFactory(rate, debug, inFlightLimit, ttlSec), gm);
+        
     }
     
     private void run() {
@@ -48,8 +52,7 @@ public class ClockApp {
         scheduler.awaitTermination(100, TimeUnit.MILLISECONDS);
         
         stage.printExitStatus();
-        
-        
+                
     }
     
     public static void main(String[] args) {        

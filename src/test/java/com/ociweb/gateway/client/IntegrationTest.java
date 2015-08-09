@@ -104,7 +104,7 @@ public class IntegrationTest {
            private final int messages;
            
            public IntegrationTestQOS1Publish(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn, int iterations, int messages) {
-               super(gm,unusedIds,connectionOut,connectionIn);
+               super(gm,unusedIds,connectionOut,connectionIn,60);
                this.toSend = iterations;
                this.iterations =iterations;
                this.messages = messages;
@@ -178,14 +178,10 @@ public class IntegrationTest {
 		private final int payloadLen = qos0TestPayloadLength;
 		
 		private final int messages;
-		
-		
-	
-		
-		
+				
 		
 		public IntegrationTestQOS0Publish(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn, int iterations, int messages) {
-			super(gm,unusedIds,connectionOut,connectionIn);
+			super(gm,unusedIds,connectionOut,connectionIn,60);
 			this.toSend = iterations;
 			this.iterations =iterations;
 			this.messages = messages;
@@ -247,7 +243,7 @@ public class IntegrationTest {
 		
 		public IntegrationTestConnectDisconnector(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut,
 				RingBuffer connectionIn, int iterations) {
-			super(gm,unusedIds,connectionOut,connectionIn);
+			super(gm,unusedIds,connectionOut,connectionIn,60);
 			this.toSend = iterations;
 			this.iterations =iterations;
 		}

@@ -18,7 +18,7 @@ public class ValidGraphConstruction {
 		//This test may not be needed in the future with the graph if generated directly from the DOT file.
 		
 		GraphManager gm = new GraphManager();		
-		ClientAPIFactory.clientAPI(ClockStageFactory.instance, gm);
+		ClientAPIFactory.clientAPI(new ClockStageFactory("1000",true,20,60), gm);
 		
 		assertEquals("API and IdGen should be the only producers",2, gm.countStagesWithAnnotationKey(gm, GraphManager.PRODUCER));
 		

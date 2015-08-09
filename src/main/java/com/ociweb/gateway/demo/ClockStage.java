@@ -27,8 +27,8 @@ public class ClockStage extends APIStage {
     
     boolean connected;
     
-    public ClockStage(GraphManager graphManager, RingBuffer idGenIn, RingBuffer fromC, RingBuffer toC) {
-		super(graphManager, idGenIn, fromC, toC);
+    public ClockStage(GraphManager graphManager, RingBuffer idGenIn, RingBuffer fromC, RingBuffer toC, int ttlSec) {
+		super(graphManager, idGenIn, fromC, toC, ttlSec);
 		
 		GraphManager.addAnnotation(graphManager, GraphManager.SCHEDULE_RATE, ClockApp.rate, this);
 				
@@ -54,10 +54,7 @@ public class ClockStage extends APIStage {
         System.out.print("last will is set to ");
         System.out.print(EXIT_TOPIC);
         System.out.print(" ");
-        System.out.println(EXIT_PAYLOAD);      
-        
-	    
-	    
+        System.out.println(EXIT_PAYLOAD);	    
 	    
 	    NONE = new byte[0];
 	    workspace = new byte[WORK_SIZE];
@@ -89,16 +86,16 @@ public class ClockStage extends APIStage {
         payloadLength = 1+8+8;        
         long rate = Long.parseLong(ClockApp.rate);
         int tmp = runningPos+9;//skip over the dynamic fields and add this constant
-        workspace[tmp++] = (byte) (rate >> 56);
-        workspace[tmp++] = (byte) (rate >> 48);
-        workspace[tmp++] = (byte) (rate >> 40);
-        workspace[tmp++] = (byte) (rate >> 32);
+        workspace[WORK_MASK&tmp++] = (byte) (rate >> 56);
+        workspace[WORK_MASK&tmp++] = (byte) (rate >> 48);
+        workspace[WORK_MASK&tmp++] = (byte) (rate >> 40);
+        workspace[WORK_MASK&tmp++] = (byte) (rate >> 32);
         
-        workspace[tmp++] = (byte) (rate >> 24);
-        workspace[tmp++] = (byte) (rate >> 16);
-        workspace[tmp++] = (byte) (rate >> 8);
-        workspace[tmp++] = (byte) (rate >> 0); 
-        
+        workspace[WORK_MASK&tmp++] = (byte) (rate >> 24);
+        workspace[WORK_MASK&tmp++] = (byte) (rate >> 16);
+        workspace[WORK_MASK&tmp++] = (byte) (rate >> 8);
+        workspace[WORK_MASK&tmp++] = (byte) (rate >> 0); 
+                
         runningPos += payloadLength;      
         assert(runningPos < WORK_SIZE);
         
@@ -130,6 +127,7 @@ public class ClockStage extends APIStage {
         
         long pubPos = requestPublish(workspace, topicIdx, topicLength, WORK_MASK, qualityOfService, retain, workspace, payloadIdx, payloadLength, WORK_MASK);
         readyForNewMessage = pubPos>=0;
+        System.out.println("publish time ready "+readyForNewMessage);
         
 	}
 
@@ -138,18 +136,18 @@ public class ClockStage extends APIStage {
         int tmp = payloadIdx;
 
         seqCount++;
-        workspace[tmp++] = (byte) seqCount;
+        workspace[WORK_MASK&tmp++] = (byte) seqCount;
         
         long now = System.currentTimeMillis();
-        workspace[tmp++] = (byte) (now >> 56);
-        workspace[tmp++] = (byte) (now >> 48);
-        workspace[tmp++] = (byte) (now >> 40);
-        workspace[tmp++] = (byte) (now >> 32);
+        workspace[WORK_MASK&tmp++] = (byte) (now >> 56);
+        workspace[WORK_MASK&tmp++] = (byte) (now >> 48);
+        workspace[WORK_MASK&tmp++] = (byte) (now >> 40);
+        workspace[WORK_MASK&tmp++] = (byte) (now >> 32);
         
-        workspace[tmp++] = (byte) (now >> 24);
-        workspace[tmp++] = (byte) (now >> 16);
-        workspace[tmp++] = (byte) (now >> 8);
-        workspace[tmp++] = (byte) (now >> 0);
+        workspace[WORK_MASK&tmp++] = (byte) (now >> 24);
+        workspace[WORK_MASK&tmp++] = (byte) (now >> 16);
+        workspace[WORK_MASK&tmp++] = (byte) (now >> 8);
+        workspace[WORK_MASK&tmp++] = (byte) (now >> 0);
     }
 
 
