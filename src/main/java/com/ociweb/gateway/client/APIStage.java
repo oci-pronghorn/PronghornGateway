@@ -213,6 +213,7 @@ public class APIStage extends PronghornStage {
 			RingWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
 				
 			RingWriter.publishWrites(toCon);
+						
 			return localPacketId<0 ? 0 : localPacketId;//TODO: we have no id for qos 0 this is dirty.
 		} else {
 			return -1;

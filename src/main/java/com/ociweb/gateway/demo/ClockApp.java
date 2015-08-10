@@ -44,8 +44,7 @@ public class ClockApp {
         Scanner scan = new Scanner(System.in);
         System.out.println("press enter to exit");
         scan.hasNextLine();//blocks until enter 
-       
-        
+               
         System.out.println("exiting...");
         
         scheduler.shutdown();

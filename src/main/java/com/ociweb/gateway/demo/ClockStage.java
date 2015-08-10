@@ -127,8 +127,6 @@ public class ClockStage extends APIStage {
         
         long pubPos = requestPublish(workspace, topicIdx, topicLength, WORK_MASK, qualityOfService, retain, workspace, payloadIdx, payloadLength, WORK_MASK);
         readyForNewMessage = pubPos>=0;
-        System.out.println("publish time ready "+readyForNewMessage);
-        
 	}
 
 
