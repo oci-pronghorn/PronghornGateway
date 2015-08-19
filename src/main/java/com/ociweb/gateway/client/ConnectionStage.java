@@ -211,8 +211,7 @@ public class ConnectionStage extends PronghornStage {
 	                        //return ensures that we will come back in to run the next one after the above is written
 	                        return;                            
 	                         
-	                     }
-	                     
+	                     }	                     
 	                     
 	                 }
 	             } 
@@ -227,10 +226,8 @@ public class ConnectionStage extends PronghornStage {
 	             setDupBitOn();
                  pendingActivityAfterWrite = AFTER_WRITE_DO_NOTHING;
 	         }
-	     };
-	     
+	     };	     
 	     pendingActivityAfterWrite = AFTER_WRITE_DO_NOTHING;
-	     
 		
 	}
 
@@ -343,6 +340,13 @@ public class ConnectionStage extends PronghornStage {
     			
     		}
     
+            //only if there are NO unconfirmed messages outstanding.
+            assert(outstandingUnconfirmedMessages>=0);
+            if (0==outstandingUnconfirmedMessages && !hasPendingWrites()) {;
+                RingReader.releaseReadLock(apiIn);
+                RingBuffer.releaseAllBatchedReads(apiIn);
+            }
+            
     		//must be in connected or disconnected state before reading a fragment
     		if (notPendingConnect() && !hasPendingWrites() && RingReader.tryReadFragment(apiIn)) {
     			
@@ -360,7 +364,8 @@ public class ConnectionStage extends PronghornStage {
         					    //this is only for a new connection as defined from the api
         					    commonBuilder.setLength(0);
         					    
-        					    addr = new InetSocketAddress(RingReader.readASCII(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, commonBuilder).toString(), port);
+        					    
+        					    addr = new InetSocketAddressImmutable(RingReader.readASCII(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, commonBuilder).toString(), port);
         					    //the above replacement may cause some garbage however none will be created upon connect and disconnect.
         					    //TOOD:D if it should become important however even this garbage can be eliminated.
         					}
@@ -404,7 +409,7 @@ public class ConnectionStage extends PronghornStage {
         					     //send error back to API.
         						return;
         					}
-        					
+			
         					outstandingUnconfirmedMessages += RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
                             pendingWriteBuffers[0] = RingReader.wrappedUnstructuredLayoutBufferA(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA);
                             pendingWriteBuffers[1] = RingReader.wrappedUnstructuredLayoutBufferB(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA);
@@ -418,13 +423,13 @@ public class ConnectionStage extends PronghornStage {
     						
     			}
     			
-    		
-    			//only if there are NO unconfirmed messages outstanding.
-    			assert(outstandingUnconfirmedMessages>=0);
-    			if (0==outstandingUnconfirmedMessages && !hasPendingWrites()) {
-    			    RingReader.releaseReadLock(apiIn);
-    			    RingBuffer.releaseAllBatchedReads(apiIn);
-    			}
+//    		
+//    			//only if there are NO unconfirmed messages outstanding.
+//    			assert(outstandingUnconfirmedMessages>=0);
+//    			if (0==outstandingUnconfirmedMessages && !hasPendingWrites()) {
+//    			    RingReader.releaseReadLock(apiIn);
+//    			    RingBuffer.releaseAllBatchedReads(apiIn);
+//    			}
     			
     			
     			
@@ -584,7 +589,7 @@ public class ConnectionStage extends PronghornStage {
 
 			    boolean ok = RingWriter.tryWriteFragment(apiOut, ConOutConst.MSG_CON_OUT_PUB_ACK);
 			    assert(ok) : "Internal error, expected there to be room for this write";
-			    RingWriter.writeInt(apiOut, ConOutConst.CON_OUT_PUB_ACK_FIELD_PACKETID, packetId); 
+			    RingWriter.writeInt(apiOut, ConOutConst.CON_OUT_PUB_ACK_FIELD_PACKETID, packetId);		    
 			    releaseMessage(packetId,1);			    
 			}
 			RingWriter.publishWrites(apiOut);					
@@ -692,8 +697,11 @@ public class ConnectionStage extends PronghornStage {
  
 	        RingBuffer.replayUnReleased(apiIn);
 	        
-	        boolean endFound = false;
-	        while (RingBuffer.isReplaying(apiIn) && RingReader.tryReadFragment(apiIn)) {
+	        boolean releaseEndFound = false;
+	        boolean replaying = true;
+	        while (replaying && RingReader.tryReadFragment(apiIn)) {
+	            //always checks one more, the current one which is not technically part of the replay.
+	            replaying = RingBuffer.isReplaying(apiIn);
 	            
 	            int msgIdx = RingReader.getMsgIdx(apiIn);
 	            //based on type 
@@ -701,6 +709,9 @@ public class ConnectionStage extends PronghornStage {
 	                
 	                int msgPacketId = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETID);
 	                if (packetId == msgPacketId) {
+	                    
+	         //           System.err.println("release for packet "+packetId);
+	                    
 	                    //we found it, now clear the QoS and confirm that it was valid
 	                    int qos = RingReader.readIntSecure(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS,-originalQoS);
 	                    if (1==qos) {
@@ -711,19 +722,23 @@ public class ConnectionStage extends PronghornStage {
 	                    }
 	                } else {
 	                    int qos = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
-	                    endFound |= (qos>0);
+	                    releaseEndFound |= (qos>0);
+	             //       System.err.println("end found at "+msgPacketId+" looking for "+packetId);
 	                }
 	            } else if (ConInConst.MSG_CON_IN_PUB_REL == msgIdx) {
 	                
 	                int msgPacketId = RingReader.readInt(apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETID);
 	                if (packetId == msgPacketId) {
+	      //              System.err.println("release for packet pubRel "+packetId);
 	                    //we found the pubRel now clear it by setting the packet id negative
 	                    RingReader.readIntSecure(apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETID,-msgPacketId);
 	                    releasePacketId(packetId);//This is the end of the QoS2 publish
 	                }
+	            } else {
+	                System.err.println("unkown "+msgIdx);
 	            }
 	            
-	            if (!endFound) {
+	            if (!releaseEndFound) {
 	                //release everything up to this point, only done while
 	                //the end is not found because we can only release the contiguous 
 	                //messages until we reach the fist unconfirmed message.
@@ -763,7 +778,7 @@ public class ConnectionStage extends PronghornStage {
 
 		//Note this connection message can also be kicked off because the expected state is connected and the connection was lost.
 		//     create socket and connect when we get the connect message		
-		try {					
+		try {	
 		    
 		    if (!channel.isOpen()) {
 		        //once a connection is closed it can not be re-opened so we have no choice but create a new connection.
