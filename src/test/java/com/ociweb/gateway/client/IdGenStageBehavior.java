@@ -124,7 +124,7 @@ public class IdGenStageBehavior{
 						int limit = (range >> 16) & 0xFFFF;
 						
 						int count = limit-idx;
-						if (count>IdGenStage.MAX_BLOCK_SIZE) {
+						if (count > IdGenStage.MAX_BLOCK_SIZE) {
 							System.err.println("TOO many in one call "+count); //TODO: AAA,  move test to validation
 							return false;
 						}

@@ -16,6 +16,7 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -404,7 +405,7 @@ public class IntegrationTest {
         scheduler.awaitTermination(3, TimeUnit.SECONDS);		
 	}
 	    
-    @Test       
+    @Ignore       
     public void testQoS1() {
         //for this test we will use a known working broker and known working subscriber (both from eclipse)
         //we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.

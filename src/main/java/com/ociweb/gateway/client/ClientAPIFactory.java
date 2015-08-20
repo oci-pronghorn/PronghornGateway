@@ -15,8 +15,8 @@ public class ClientAPIFactory {
 	
 	public static APIStage clientAPI(APIStageFactory factory, GraphManager gm) {
 		int queuedIds = 3;
-		int queuedConIn = 2; //TODO: move to factory.
-		int queuedConOut = 2;
+		int queuedConIn = 4; //TODO: move to factory.
+		int queuedConOut = 4;
 		
 		return buildInstance(factory, gm, 
 				            queuedIds, queuedConIn, queuedConOut);
@@ -41,7 +41,7 @@ public class ClientAPIFactory {
 		APIStage apiStage = factory.newInstance(gm, unusedIds, connectionOut, connectionIn);
 		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, apiStage);
 		new ConnectionStage(gm, connectionIn, connectionOut, releasedIds, rate.length()>2 ? rate.substring(0, rate.length()-2) : "0", 
-		                    factory.getInFlightLimit(), factory.getTTLSec());
+		                    factory.getInFlightLimit(), factory.getTTLSec(), factory.isSecured(), factory.getPort());
 		
 		
 		//enable monitoring if we have 64mb of memory, //TODO: AAA, do not turn on takes all the memory.

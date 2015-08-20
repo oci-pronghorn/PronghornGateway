@@ -18,6 +18,24 @@
     </java.secure.socket.extension.classes>
   </properties>
   
+  <!-- 
+  
+   -Xmx1024k //Use minimum heap
+   -Xss102k  //Use minimum stack per thread
+   -XX:ReservedCodeCacheSize=8m //if we know (for sure) that JIT/Hotspot will have little to do this can be set small
+   -XX:MinHeapFreeRatio=10 -XX:MaxHeapFreeRatio=25  //reduce frequency of GC running.
+   
+	# tune glibc memory allocation, optimize for low fragmentation
+	# limit the number of arenas
+	export MALLOC_ARENA_MAX=2
+	# disable dynamic mmap threshold, see M_MMAP_THRESHOLD in "man mallopt"
+	export MALLOC_MMAP_THRESHOLD_=131072
+	export MALLOC_TRIM_THRESHOLD_=131072
+	export MALLOC_TOP_PAD_=131072
+	export MALLOC_MMAP_MAX_=65536
+   
+   -->
+  
     <dependencies>
 
 		<dependency>

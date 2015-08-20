@@ -55,8 +55,8 @@ public class ConnectionStage extends PronghornStage {
 	 private ActivityAfterWrite AFTER_WRITE_CONTINUE_REPLAY;
 	 private ActivityAfterWrite AFTER_WRITE_SET_DUP_BIT;
 	        
-     
-     private int port = 1883;//TODO: A, need a way to use both sockets as needed both TLS and non-TLS                 
+     private boolean secure;;
+     private int port;         
 
      //TODO: we must finish full publish and subcribe before teh 17th of aug.
 
@@ -105,13 +105,17 @@ public class ConnectionStage extends PronghornStage {
 	//TCP/IP port 8883 is also registered, for using MQTT over SSL.
 	 
 	protected ConnectionStage(GraphManager graphManager, RingBuffer apiIn, 
-			                                             RingBuffer apiOut, RingBuffer idGenOut, String rate, int inFlightLimit, int ttlSec) {
+			                                             RingBuffer apiOut, RingBuffer idGenOut, String rate, 
+			                                             int inFlightLimit, int ttlSec, boolean secure, int port) {
 		super(graphManager, 
 				new RingBuffer[]{apiIn},
 				new RingBuffer[]{apiOut,idGenOut});
 
 		this.inFlightLimit = inFlightLimit;
 		this.timeLimitMS = 1000 * ttlSec; //TODO: check spec this should send ping before this limit?
+		
+		this.secure = secure;
+		this.port = port;
 		
 		this.apiIn = apiIn;
 		this.apiOut = apiOut;
@@ -818,10 +822,15 @@ public class ConnectionStage extends PronghornStage {
 
     private void buildNewConnection() {
         try {
+            if (secure) {
+                //TODO: AAA, instead of normal connection we will build a TLS connection
+                
+            }
+            
             channel = (SocketChannel)SocketChannel.open().configureBlocking(false);
             assert(!channel.isBlocking()) : "Blocking must be turned off for all socket connections";   
         } catch (IOException e) {
-            throw new RuntimeException("New non blocking SocketChannel not supported on this platform",e);
+            throw new RuntimeException("CHECK NETWORK CONNECTION, New non blocking SocketChannel not supported on this platform",e);
         }
     }
 

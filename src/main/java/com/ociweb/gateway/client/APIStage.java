@@ -77,7 +77,7 @@ public class APIStage extends PronghornStage {
 				break;
 				case ConOutConst.MSG_CON_OUT_PUB_ACK:
 				    packetId = RingReader.readInt(fromCon, ConOutConst.CON_OUT_PUB_ACK_FIELD_PACKETID);
-				    
+				    //System.out.println("ack packet "+packetId+" "+fromCon);
 				    ackReceived1(packetId);
 				    
 				break;    
@@ -105,7 +105,8 @@ public class APIStage extends PronghornStage {
 				default:
 					
 			}
-			RingReader.releaseReadLock(fromCon);		
+			RingReader.releaseReadLock(fromCon);
+			//System.out.println("                "+fromCon);
 		}
 		businessLogic();
 	}

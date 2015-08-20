@@ -26,4 +26,12 @@ public abstract class APIStageFactory {
     public int getMaxTopicOrPayload() {
         return 16; //maximum length in bytes of the payload or utf8 encoded topic
     }
+
+    public boolean isSecured() {
+        return false;
+    }
+
+    public int getPort() {
+        return 1883;
+    }
 }

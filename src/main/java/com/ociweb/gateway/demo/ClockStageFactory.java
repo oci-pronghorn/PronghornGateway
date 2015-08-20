@@ -42,4 +42,11 @@ public class ClockStageFactory extends APIStageFactory {
         return ttlSec;
     }
     
+    public boolean isSecured() {
+        return false;
+    }
+
+    public int getPort() {
+        return 1883;
+    }
 }
