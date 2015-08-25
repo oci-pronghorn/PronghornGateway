@@ -1,7 +1,5 @@
 package com.ociweb.gateway.client;
 
-import java.util.Arrays;
-
 import com.ociweb.pronghorn.ring.RingBuffer;
 
 public class MQTTEncoder {
@@ -147,39 +145,7 @@ public class MQTTEncoder {
 		return targetPos+srcLength;
 	}
 
-	/**
-	 * 
-	 * Converts CharSequence (base class of String) into UTF-8 encoded bytes and writes those bytes to an array.
-	 * The write loops around the end using the targetMask so the returned length must be checked after the call
-	 * to determine if and overflow occurred. 
-	 * 
-	 * Due to the variable nature of converting chars into bytes there is not easy way to know before walking how
-	 * many bytes will be needed.  To prevent any overflow ensure that you have 6*lengthOfCharSequence bytes available.
-	 * 
-	 */
-	public static int convertToUTF8(final CharSequence charSeq, final int charSeqOff, final int charSeqLength, final byte[] targetBuf, final int targetIdx, final int targetMask) {
 		
-		int target = targetIdx;				
-	    int c = 0;
-	    while (c < charSeqLength) {
-	    	target = RingBuffer.encodeSingleChar((int) charSeq.charAt(charSeqOff+c++), targetBuf, targetMask, target);
-	    }
-	    //NOTE: the above loop will keep looping around the target buffer until done and will never cause an array out of bounds.
-	    //      the length returned however will be larger than targetMask, this should be treated as an error.
-	    return target-targetIdx;//length;
-	}
-	
-	public static int convertToUTF8(final char[] charSeq, final int charSeqOff, final int charSeqLength, final byte[] targetBuf, final int targetIdx, final int targetMask) {
-		
-		int target = targetIdx;				
-	    int c = 0;
-	    while (c < charSeqLength) {
-	    	target = RingBuffer.encodeSingleChar((int) charSeq[charSeqOff+c++], targetBuf, targetMask, target);
-	    }
-	    //NOTE: the above loop will keep looping around the target buffer until done and will never cause an array out of bounds.
-	    //      the length returned however will be larger than targetMask, this should be treated as an error.
-	    return target-targetIdx;//length;
-	}	
 	
     //TODO: B, Break up the packet into to splittable parts so we can use constants that need not be copied  through the ring buffer
 	

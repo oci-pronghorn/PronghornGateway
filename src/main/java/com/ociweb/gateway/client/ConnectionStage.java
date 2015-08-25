@@ -1,7 +1,5 @@
 package com.ociweb.gateway.client;
 
-import static com.ociweb.pronghorn.ring.RingBuffer.addMsgIdx;
-import static com.ociweb.pronghorn.ring.RingBuffer.publishWrites;
 import static com.ociweb.pronghorn.ring.RingBuffer.roomToLowLevelWrite;
 
 import java.io.IOException;
@@ -9,6 +7,7 @@ import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.NotYetConnectedException;
 import java.nio.channels.SocketChannel;
+import java.nio.channels.spi.SelectorProvider;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,9 +20,9 @@ import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
 public class ConnectionStage extends PronghornStage {
 	
-	 private final RingBuffer apiIn;
+	 final RingBuffer apiIn;
 	 private final RingBuffer apiOut;
-	 private final RingBuffer idGenOut;
+	 final RingBuffer idGenOut;
 	 
 	 private final int inFlightLimit;  //TODO: Where is this constraint enforced?
 	 private SocketChannel channel;
@@ -55,7 +54,6 @@ public class ConnectionStage extends PronghornStage {
 	 private ActivityAfterWrite AFTER_WRITE_CONTINUE_REPLAY;
 	 private ActivityAfterWrite AFTER_WRITE_SET_DUP_BIT;
 	        
-     private boolean secure;;
      private int port;         
 
      //TODO: we must finish full publish and subcribe before teh 17th of aug.
@@ -64,20 +62,18 @@ public class ConnectionStage extends PronghornStage {
 	 //non-tls socket 1883 
 	 private InetSocketAddress addr;
 	 
-	 private int firstConsumedPacketId = -1;
-	 private int lastConsumedPacketId = -1;
 	 
 	 //required to know when a ping must be sent to keep alive the connection
 	 private long lastTimestamp; 
 	 private int unconfirmedPings;   
 	 
-	  private final int getIdMessageIdx = 0; 
-	  private final int genIdMessageSize; 
+	  final int getIdMessageIdx = 0; 
+	  final int genIdMessageSize; 
 	  private final int maxAckMessageSize;   
 	  
 	 private int outstandingUnconfirmedMessages = 0;
 	 
-	 private static Logger log = LoggerFactory.getLogger(ConnectionStage.class);
+	 static Logger log = LoggerFactory.getLogger(ConnectionStage.class);
 	 	 
 	 // must be divisable by 4 and >=4 to evenly fit all the packets expected
 	 // the biggest message is also 4 in length so this buffer will support
@@ -86,6 +82,12 @@ public class ConnectionStage extends PronghornStage {
      private static final byte DUP_BIT = 8;
      private final long timeLimitMS;
       
+     
+     PacketIdReleaseManager packetIdRelease;
+     
+     //debugging techniuqe that we should seriously consider moving into the framework its self.
+     private int continueReason = 0;
+     
 	 static {
 		 assert(INPUT_BUFFER_SIZE>=4) : "Must be >= 4";
 		 assert(0==(INPUT_BUFFER_SIZE&0x3)) : "Must be divisable by 4";
@@ -114,7 +116,6 @@ public class ConnectionStage extends PronghornStage {
 		this.inFlightLimit = inFlightLimit;
 		this.timeLimitMS = 1000 * ttlSec; //TODO: check spec this should send ping before this limit?
 		
-		this.secure = secure;
 		this.port = port;
 		
 		this.apiIn = apiIn;
@@ -130,7 +131,6 @@ public class ConnectionStage extends PronghornStage {
 		GraphManager.addAnnotation(graphManager, GraphManager.SCHEDULE_RATE, rate, this);
 		
 	}
-
 	
 	
 	private int computeMaxAckMessageSize(RingBuffer pipe) {
@@ -233,6 +233,8 @@ public class ConnectionStage extends PronghornStage {
 	     };	     
 	     pendingActivityAfterWrite = AFTER_WRITE_DO_NOTHING;
 		
+	     packetIdRelease = new PacketIdReleaseManager();
+	     
 	}
 
     private boolean resendUnconfirmedMessages(long now) {
@@ -256,9 +258,11 @@ public class ConnectionStage extends PronghornStage {
 	@Override
 	public void run() {
 
+	   // System.err.println("last continue reason "+continueReason);
+
     	    long now = System.currentTimeMillis();
     	    
-    	    //must keep re-setting this value
+    	    //must keep re-setting this value, must not let it release on its own, TODO: need a more elegant solution.
             RingBuffer.batchAllReleases(apiIn);
             
     		//65536/8 is 1<<13 8k bytes for perfect hash
@@ -270,6 +274,7 @@ public class ConnectionStage extends PronghornStage {
     			if (!channel.isConnected()) {    			    
     			    state = STATE_CONNECTING;
     				if (!connect(now)) {
+    				    continueReason = 1;
     				    return;
     				}
     			}
@@ -277,6 +282,7 @@ public class ConnectionStage extends PronghornStage {
     			if (channel.isOpen()) {
     			    if (hasPendingWrites()) {
     			        if (!nonBlockingByteBufferWrite(now)) {
+    			            continueReason = 2;
     			            return;//do not continue because we have pending writes which must be done first.
     			        }			        
     			    }
@@ -289,15 +295,17 @@ public class ConnectionStage extends PronghornStage {
     		        if (timeStampTooOld(now)) {
     		            //try this first to avoid sending a ping
     		            if (!resendUnconfirmedMessages(now)) {
+    		                continueReason = 3;
     		                return;//unable to send anything now, try again later.
     		            }
     		            //no messages to re send so ping must be sent
     		            if (timeStampTooOld(now)) {
     		                PING_MESSAGE.flip();
                             
-    		                pendingWriteBuffers[0] = PING_MESSAGE;//send disconnect  0xE0 0x00
+    		                pendingWriteBuffers[0] = PING_MESSAGE;
                             
                             if (!nonBlockingByteBufferWrite(now)) {
+                                continueReason = 4;
                                 return;//try again later, can't send ping now.
                             }
     		            }		            
@@ -307,15 +315,18 @@ public class ConnectionStage extends PronghornStage {
     		        ////////
     			    
     			    
-    				try {				
-    					while ( channel.read(inputSocketBuffer) > 0 ) {
+    				try {		
+    				    boolean hasPreviousData = inputSocketBuffer.position()>0;
+    					while ( channel.read(inputSocketBuffer) > 0 || hasPreviousData) { //TODO: copy to HZ impl
     						//we found some new data what to do with it
-    								
+    					    hasPreviousData = false;//any further passes will require the new reading of data.
     					    //must confirm there is room in case it is needed.
     					    if (!roomToLowLevelWrite(idGenOut, genIdMessageSize))  {
+    					        continueReason = 5;
     					        return;//can not risk needing to release a packetId and not having the room so must wait.
     					    }					    
     					    if (!RingWriter.hasRoomForFragmentOfSize(apiOut, maxAckMessageSize)) {
+    					        continueReason = 6;
     					        return;//can not risk needing to notify the caller and not having room to do so.
     					    }
     					    					    
@@ -324,20 +335,19 @@ public class ConnectionStage extends PronghornStage {
     						if (!parseData(now)) {
     							//disconnected so start over
     						    inputSocketBuffer.clear();
+    						    continueReason = 7;
     							return;
     						}
     										
     						//copy the last 1 or 2 byte back down to bottom of buffer to add on for next time.
     	                    //sets up the position for writing again and sets limit to capacity.
-    						unflip(inputSocketBuffer);
-    						
-    					}					
-    					
-    					//if this returns 0 then there was nothing to read and nothign to do, only works in non blocking mode.
-    							
-    					
+    						unflip(inputSocketBuffer);    						
+    					}
+    					//if this returns 0 then there was nothing to read and nothing to do, only works in non blocking mode.
+    							    					
     				} catch (IOException e) {
     					log.error("Unable to parse data",e);
+    					 continueReason = 8;
     					return;
     				}
     			}
@@ -367,9 +377,18 @@ public class ConnectionStage extends PronghornStage {
         					if (null==addr || !RingReader.isEqual(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, addr.getHostString())) {
         					    //this is only for a new connection as defined from the api
         					    commonBuilder.setLength(0);
-        					    
-        					    
-        					    addr = new InetSocketAddressImmutable(RingReader.readASCII(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, commonBuilder).toString(), port);
+        					            					    
+        					    String host = RingReader.readASCII(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, commonBuilder).toString();        					    
+                                InetSocketAddress tempAddr = new InetSocketAddressImmutable(host, port);
+                                if (tempAddr.isUnresolved()) {
+                                    if (null==addr) {
+                                        throw new RuntimeException("Unable to resolve host: "+host);
+                                    }
+                                    log.error("Using last known host, Unable to resolve new host {}",host);
+                                } else {
+                                    //safe to assign
+                                    addr = tempAddr;
+                                }
         					    //the above replacement may cause some garbage however none will be created upon connect and disconnect.
         					    //TOOD:D if it should become important however even this garbage can be eliminated.
         					}
@@ -380,18 +399,34 @@ public class ConnectionStage extends PronghornStage {
         					RingReader.readBytes(apiIn, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA, CONNECT_MESSAGE);								
         										
         					if (!connect(now)) {
+        					    continueReason = 9;
         					    return;
         					}
         										
     					break;
     				case ConInConst.MSG_CON_IN_DISCONNECT:
+    				    System.out.println("dis mssg");
+    				    
         					assert(STATE_CONNECTING!=state);								
         					if (!channel.isOpen()) {//unable to disconnect because it has already been done
         						state = STATE_DISCONNECTED;	
+        						continueReason = 10;
+        						System.out.println("unable to dis");
         						return;				
         					}										
         					if (STATE_CONNECTED == state && channel.isOpen()) {					    			
         							DISCONNECT_MESSAGE.flip();
+        							
+        							//TODO: AAA next urgent part to fix.
+        							//NOTE: connect disconnect works perfect for qos0 so the problem must be cutting off the ack and the re-send on re-connect!!
+        							
+        							
+        							System.out.println("sent disconnect ");
+        							if (hasPendingWrites()) {
+        							    System.err.println("********************** unclean shutdown");
+        							    new Exception().printStackTrace();
+        							    System.exit(-1);
+        							}
         							
         							pendingWriteBuffers[0] = DISCONNECT_MESSAGE;//send disconnect  0xE0 0x00
         							
@@ -408,7 +443,7 @@ public class ConnectionStage extends PronghornStage {
         					assert(STATE_CONNECTING!=state);    
         					
         					if (state==STATE_DISCONNECTED) {
-        						
+        					    continueReason = 11;
         					    //TODO: error, called publish before connect. what about forced disconnects should that be soft or hard???
         					     //send error back to API.
         						return;
@@ -421,20 +456,16 @@ public class ConnectionStage extends PronghornStage {
                             pendingActivityAfterWrite = AFTER_WRITE_SET_DUP_BIT;
                             assert(pendingWriteBuffers[0].remaining()>0): "The packed data must be found in the buffer"; //note that we added 2 for each qos of 2
         					
-                            nonBlockingByteBufferWrite(now);	
-                           
-    					break;
-    						
-    			}
-    			
-//    		
-//    			//only if there are NO unconfirmed messages outstanding.
-//    			assert(outstandingUnconfirmedMessages>=0);
-//    			if (0==outstandingUnconfirmedMessages && !hasPendingWrites()) {
-//    			    RingReader.releaseReadLock(apiIn);
-//    			    RingBuffer.releaseAllBatchedReads(apiIn);
-//    			}
-    			
+                            nonBlockingByteBufferWrite(now);                           
+    					break;    						
+    			}    			
+    		
+    			//only if there are NO unconfirmed messages outstanding.
+    			assert(outstandingUnconfirmedMessages>=0);
+    			if (0==outstandingUnconfirmedMessages && !hasPendingWrites()) {
+    			    RingReader.releaseReadLock(apiIn);
+    			    RingBuffer.releaseAllBatchedReads(apiIn);
+    			}  			
     			
     			
     		} else {
@@ -444,6 +475,7 @@ public class ConnectionStage extends PronghornStage {
     				prev=state;
     			}
     		}
+    		continueReason = 0;
 
 	}
 
@@ -552,9 +584,15 @@ public class ConnectionStage extends PronghornStage {
 	//TODO: must add a check because we may not get all the needed bytes and need to continue late when the rest of the bytes  are ready.
 	
 	private boolean parseData(long now) {
+	    //using this local value because we may not have all the needed bytes and can not move the postion until we know for sure.
+	    int position = inputSocketBuffer.position();
+	    int limit = inputSocketBuffer.limit();
 		//we only expect 4 different packet types so this makes a nice conditional tree
-		final int packetType = 0xFF&inputSocketBuffer.get();						
-		final int length = 0xFF&inputSocketBuffer.get();
+	    if (limit-position < 2) {
+	        return true;//try again later;
+	    }
+		final int packetType = 0xFF&inputSocketBuffer.get(position++);						
+		final int length = 0xFF&inputSocketBuffer.get(position++);
 		if (0 == (0xAF & packetType)) { 
 			//1010 1111 mask for PUBACK 0100 0000 or PUBREC 0101 0000
 			//second byte must always be 2 (the number of remaining bytes in the packet)
@@ -563,8 +601,11 @@ public class ConnectionStage extends PronghornStage {
 				return false;
 			}
 			
-			final int msb = 0xFF&inputSocketBuffer.get();						
-			final int lsb = 0xFF&inputSocketBuffer.get();
+		    if (limit-position < 2) {
+		            return true;//try again later;
+		    }
+			final int msb = 0xFF&inputSocketBuffer.get(position++);						
+			final int lsb = 0xFF&inputSocketBuffer.get(position++);
 			//This is needed for both QoS 1 and 2
 			int packetId = (msb << 16) | (0xFF & lsb);
 					
@@ -587,14 +628,14 @@ public class ConnectionStage extends PronghornStage {
                 boolean ok = RingWriter.tryWriteFragment(apiOut, ConOutConst.MSG_CON_OUT_PUB_REC);
                 assert(ok) : "Internal error, expected there to be room for this write";
                 RingWriter.writeInt(apiOut, ConOutConst.CON_OUT_PUB_REC_FIELD_PACKETID, packetId);                
-                releaseMessage(packetId,2);
+                PacketIdReleaseManager.releaseMessage(packetIdRelease, this, packetId,2);
                 
 			} else {
 
 			    boolean ok = RingWriter.tryWriteFragment(apiOut, ConOutConst.MSG_CON_OUT_PUB_ACK);
 			    assert(ok) : "Internal error, expected there to be room for this write";
 			    RingWriter.writeInt(apiOut, ConOutConst.CON_OUT_PUB_ACK_FIELD_PACKETID, packetId);		    
-			    releaseMessage(packetId,1);			    
+			    PacketIdReleaseManager.releaseMessage(packetIdRelease, this, packetId,1);			    
 			}
 			RingWriter.publishWrites(apiOut);					
 			
@@ -616,9 +657,11 @@ public class ConnectionStage extends PronghornStage {
 						return false;
 					}
 					
-										
-					final int sessionPresent       = 0xFF&inputSocketBuffer.get();	 //TODO: Why do we want this flag?					
-					final int connectionReturnCode = 0xFF&inputSocketBuffer.get();
+		            if (limit-position < 2) {
+	                    return true;//try again later;
+	                }		
+					final int sessionPresent       = 0xFF&inputSocketBuffer.get(position++);	 //TODO: Why do we want this flag?					
+					final int connectionReturnCode = 0xFF&inputSocketBuffer.get(position++);
 					
 					
 					if (0==connectionReturnCode) {
@@ -648,12 +691,15 @@ public class ConnectionStage extends PronghornStage {
 						return false;
 					}
 					
-					final int msb = 0xFF&inputSocketBuffer.get();						
-					final int lsb = 0xFF&inputSocketBuffer.get();
+			        if (limit-position < 2) {
+		                    return true;//try again later;
+		            }
+					final int msb = 0xFF&inputSocketBuffer.get(position++);						
+					final int lsb = 0xFF&inputSocketBuffer.get(position++);
 					int packetId = (msb << 16) | (0xFF & lsb);
 					
 					//release the pubRel to prevent it from getting sent
-				    releaseMessage(packetId,3);
+				    PacketIdReleaseManager.releaseMessage(packetIdRelease, this, packetId,3);
 				}
 								
 				
@@ -674,7 +720,7 @@ public class ConnectionStage extends PronghornStage {
 		
 		//upon successful parse always update time-stamp, this include conAck 
 		touchTimestamp(now);
-		
+		inputSocketBuffer.position(position);
 		return true;
 	}
 
@@ -697,88 +743,7 @@ public class ConnectionStage extends PronghornStage {
 	}
     
 
-	private void releaseMessage(int packetId, int originalQoS) {	    
- 
-	        RingBuffer.replayUnReleased(apiIn);
-	        
-	        boolean releaseEndFound = false;
-	        boolean replaying = true;
-	        while (replaying && RingReader.tryReadFragment(apiIn)) {
-	            //always checks one more, the current one which is not technically part of the replay.
-	            replaying = RingBuffer.isReplaying(apiIn);
-	            
-	            int msgIdx = RingReader.getMsgIdx(apiIn);
-	            //based on type 
-	            if (originalQoS < 3 && ConInConst.MSG_CON_IN_PUBLISH == msgIdx) {
-	                
-	                int msgPacketId = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETID);
-	                if (packetId == msgPacketId) {
-	                    
-	         //           System.err.println("release for packet "+packetId);
-	                    
-	                    //we found it, now clear the QoS and confirm that it was valid
-	                    int qos = RingReader.readIntSecure(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS,-originalQoS);
-	                    if (1==qos) {
-	                        releasePacketId(packetId);//This is the end of the QoS1 publish	                        
-	                    } else if (qos<=0) {
-	                        //this conditional is checked last because it is not expected to be frequent
-	                        log.warn("reduntant ack");
-	                    }
-	                } else {
-	                    int qos = RingReader.readInt(apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
-	                    releaseEndFound |= (qos>0);
-	             //       System.err.println("end found at "+msgPacketId+" looking for "+packetId);
-	                }
-	            } else if (ConInConst.MSG_CON_IN_PUB_REL == msgIdx) {
-	                
-	                int msgPacketId = RingReader.readInt(apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETID);
-	                if (packetId == msgPacketId) {
-	      //              System.err.println("release for packet pubRel "+packetId);
-	                    //we found the pubRel now clear it by setting the packet id negative
-	                    RingReader.readIntSecure(apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETID,-msgPacketId);
-	                    releasePacketId(packetId);//This is the end of the QoS2 publish
-	                }
-	            } else {
-	                System.err.println("unkown "+msgIdx);
-	            }
-	            
-	            if (!releaseEndFound) {
-	                //release everything up to this point, only done while
-	                //the end is not found because we can only release the contiguous 
-	                //messages until we reach the fist unconfirmed message.
-                    RingBuffer.releaseReadLock(apiIn);
-	            }
-	        }
-	        
-	        RingBuffer.cancelReplay(apiIn);
-	        RingBuffer.releaseAllBatchedReads(apiIn);
-	        	    		
-	}
-	
-	
-	private void releasePacketId(int packetId) {
-	    
-	    //most common expected case first
-	    if (packetId == lastConsumedPacketId + 1) {
-	        lastConsumedPacketId = packetId;
-	    } else if (packetId == firstConsumedPacketId - 1) {
-	        firstConsumedPacketId = packetId;
-	    } else {
-	        //push the old range back to idGen
-	        int result = (firstConsumedPacketId<<16) | (lastConsumedPacketId+1);
-	        //before parse of incoming message we have already checked that there is room on the outgoing queue
-            addMsgIdx(idGenOut, getIdMessageIdx);   
-            RingBuffer.addIntValue(result, idGenOut);
-            publishWrites(idGenOut);  
-            RingBuffer.confirmLowLevelWrite(idGenOut, genIdMessageSize);
-            //now use packetIda as the beginning of a new group
-            firstConsumedPacketId = lastConsumedPacketId = packetId;
-	    }
-    }
-
-
-
-    private boolean connect(long now) {
+	private boolean connect(long now) {
 
 		//Note this connection message can also be kicked off because the expected state is connected and the connection was lost.
 		//     create socket and connect when we get the connect message		
@@ -810,29 +775,22 @@ public class ConnectionStage extends PronghornStage {
 			return nonBlockingByteBufferWrite(now);
 
 		} catch (Throwable t) {
-		    
+		   // t.printStackTrace();
 		    //this is not unreasonable if we are waiting for the broker to be started.
-			log.debug("Unable to connect", t);
+			log.warn("Unable to connect to {}",addr.toString(), t);
+			System.exit(-1);
 			buildNewConnection(); //rebuild-connection to start fresh.
 			return false;
 		}		
 	}
 
 
-
     private void buildNewConnection() {
         try {
-            if (secure) {
-                //TODO: AAA, instead of normal connection we will build a TLS connection
-                
-            }
-            
-            channel = (SocketChannel)SocketChannel.open().configureBlocking(false);
+            channel = (SocketChannel) SelectorProvider.provider().openSocketChannel().configureBlocking(false);
             assert(!channel.isBlocking()) : "Blocking must be turned off for all socket connections";   
         } catch (IOException e) {
             throw new RuntimeException("CHECK NETWORK CONNECTION, New non blocking SocketChannel not supported on this platform",e);
         }
     }
-
-
 }

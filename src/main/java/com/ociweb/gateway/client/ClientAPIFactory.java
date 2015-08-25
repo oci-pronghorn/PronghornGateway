@@ -27,8 +27,8 @@ public class ClientAPIFactory {
 		
 	    String rate = factory.getRate();
 	    RingBufferConfig idGenConfig = new RingBufferConfig(CommonFromFactory.idRangesFROM, queuedIds, 0);		
-		RingBufferConfig connectionInConfig = new RingBufferConfig(ClientFromFactory.connectionInFROM, queuedConIn, factory.getMaxTopicOrPayload());
-		RingBufferConfig connectionOutConfig = new RingBufferConfig(ClientFromFactory.connectionOutFROM, queuedConOut, factory.getMaxTopicOrPayload());
+		RingBufferConfig connectionInConfig = new RingBufferConfig(ClientFromFactory.connectionInFROM, queuedConIn, factory.getMaxTopicPlusPayload());
+		RingBufferConfig connectionOutConfig = new RingBufferConfig(ClientFromFactory.connectionOutFROM, queuedConOut, factory.getMaxTopicPlusPayload());
 						
 		RingBuffer unusedIds = new RingBuffer(idGenConfig);
 		RingBuffer releasedIds = new RingBuffer(idGenConfig);
@@ -51,7 +51,7 @@ public class ClientAPIFactory {
 		    //      once complete build http server to serve angularJS pages for a better experiance.
 		    
 		    //TODO: B, replace with JMX version before release.
-			Integer defaultMonitorRate = Integer.valueOf(50000000);
+			Long defaultMonitorRate = Long.valueOf(50000000);
 			RingBufferConfig defaultMonitorRingConfig = new RingBufferConfig(CommonFromFactory.monitorFROM, 5, 0);
 		    MonitorConsoleStage.attach(gm,defaultMonitorRate,defaultMonitorRingConfig); 
 		}

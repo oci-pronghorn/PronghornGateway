@@ -9,6 +9,8 @@ import java.util.Random;
 import org.junit.Assert;
 import org.junit.Test;
 
+import com.ociweb.pronghorn.ring.RingBuffer;
+
 public class MQTTEncoderTest {
 
 	
@@ -39,7 +41,7 @@ public class MQTTEncoderTest {
 			
 			int testOff = 0;
 			int testLen = testValue.length();
-			MQTTEncoder.convertToUTF8(testValue, testOff, testLen, target, tagetIdx, targetMask);
+			RingBuffer.convertToUTF8(testValue, testOff, testLen, target, tagetIdx, targetMask);
 			
 			try {
 				byte[] expected = testValue.getBytes("UTF-8");
@@ -93,7 +95,7 @@ public class MQTTEncoderTest {
 				builder.append(c);
 			}
 			
-			int bytes = MQTTEncoder.convertToUTF8(builder, 0, builder.length(), target, tagetIdx, targetMask);
+			int bytes = RingBuffer.convertToUTF8(builder, 0, builder.length(), target, tagetIdx, targetMask);
 			
 			sum += bytes;
 			if (bytes==0) {

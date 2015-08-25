@@ -23,8 +23,8 @@ public abstract class APIStageFactory {
         return 60;
     }
 
-    public int getMaxTopicOrPayload() {
-        return 16; //maximum length in bytes of the payload or utf8 encoded topic
+    public int getMaxTopicPlusPayload() {
+        return 64; //maximum length in bytes of the payload or utf8 encoded topic
     }
 
     public boolean isSecured() {

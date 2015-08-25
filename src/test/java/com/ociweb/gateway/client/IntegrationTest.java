@@ -35,14 +35,19 @@ public class IntegrationTest {
     private static Logger log = LoggerFactory.getLogger(IntegrationTest.class);
 	
 	private final static String qos0TestTopic = "root/qos0test/box/color";	
-	private final static int qos0ConnectionIterations = 5;
-	private final static int qos0Messages = 3;
+	private final static int qos0ConnectionIterations = 2;
+	private final static int qos0Messages = 2;
 	private final static int qos0TestPayloadLength = 32;
 	
     private final static String qos1TestTopic = "root/qos1test/box/color";  
-	private final static int qos1ConnectionIterations = 5;
-	private final static int qos1Messages = 3;
+	private final static int qos1ConnectionIterations = 2;
+	private final static int qos1Messages = 2;
 	private final static int qos1TestPayloadLength = 32;
+	
+    private final static String qos2TestTopic = "root/qos2test/box/color";  
+    private final static int qos2ConnectionIterations = 2;
+    private final static int qos2Messages = 2;
+    private final static int qos2TestPayloadLength = 32;
 	
 	private static int qos0TestTotalCount = 0;
 	private static int qos1TestTotalCount = 0;
@@ -82,6 +87,82 @@ public class IntegrationTest {
 		server = null;
 	}
 	
+	
+    public class IntegrationTestQOS2Publish extends APIStage {
+        
+        private int toSend;
+        private final int iterations;
+        private int connectionsCounted;
+        
+        private final String topic = qos1TestTopic;
+        
+        private final int valuesBits = 8;
+        private final int valuesMask = (1<<valuesBits)-1;
+        private final byte[] values = new byte[valuesMask+1];
+        
+        private final int topicPos = 0;
+        private final int topicLen = RingBuffer.convertToUTF8(topic,0,topic.length(),
+                                                 values, topicPos, valuesMask);
+        
+        private final int payloadPos = 0 + topicLen;            
+        private final int payloadLen = qos1TestPayloadLength;
+        
+        private final int messages;
+        
+        public IntegrationTestQOS2Publish(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn, int iterations, int messages) {
+            super(gm,unusedIds,connectionOut,connectionIn,60);
+            this.toSend = iterations;
+            this.iterations =iterations;
+            this.messages = messages;
+            
+            int i = payloadLen;
+            while (--i>=0) {
+                values[payloadPos+i] = (byte)i;
+            }
+            
+        }
+
+        @Override
+        public void businessLogic() {
+            
+            if (--toSend>=0) {
+               
+                CharSequence url = "127.0.0.1";
+                int conFlags = 0;//MQTTEncoder.CONNECT_FLAG_CLEAN_SESSION_1; //do not clean session
+                
+                byte[] empty = new byte[0];
+                
+                byte[] willTopic = empty;
+                byte[] willMessageBytes = empty;
+                byte[] username = empty;
+                byte[] passwordBytes = empty;
+                
+                while (!requestConnect(url, conFlags, willTopic,0,0,0, willMessageBytes,0,0,0, username, passwordBytes)) {                  
+                }
+                        
+                final int qualityOfService = 2;
+                                
+                int retain = 0;
+                            
+                int count = messages;
+                while (--count>=0) { 
+                    System.out.println(toSend+"  "+count);
+                    long pos;
+                    while (-1==(pos = requestPublish(values, topicPos, topicLen, valuesMask, qualityOfService, retain, values, payloadPos, payloadLen, valuesMask))) {
+                    }
+                }
+                
+                while (!requestDisconnect()) {                  
+                }
+                            
+            } else {                
+               requestShutdown();      
+               log.trace("shutdown of test was requested.");
+
+            }
+            
+        }
+    }
 
 	   public class IntegrationTestQOS1Publish extends APIStage {
            
@@ -96,7 +177,7 @@ public class IntegrationTest {
            private final byte[] values = new byte[valuesMask+1];
            
            private final int topicPos = 0;
-           private final int topicLen = MQTTEncoder.convertToUTF8(topic,0,topic.length(),
+           private final int topicLen = RingBuffer.convertToUTF8(topic,0,topic.length(),
                                                     values, topicPos, valuesMask);
            
            private final int payloadPos = 0 + topicLen;            
@@ -141,6 +222,7 @@ public class IntegrationTest {
                                
                    int count = messages;
                    while (--count>=0) { 
+                       System.out.println(toSend+"  "+count);
                        long pos;
                        while (-1==(pos = requestPublish(values, topicPos, topicLen, valuesMask, qualityOfService, retain, values, payloadPos, payloadLen, valuesMask))) {
                        }
@@ -150,10 +232,9 @@ public class IntegrationTest {
                    }
                                
                } else {                
-                   if (connectionsCounted>=iterations) {
-                       requestShutdown();      
-                       log.trace("shutdown of test was requested.");
-                   }
+                  requestShutdown();      
+                  log.trace("shutdown of test was requested.");
+
                }
                
            }
@@ -172,7 +253,7 @@ public class IntegrationTest {
 		private final byte[] values = new byte[valuesMask+1];
 		
 		private final int topicPos = 0;
-		private final int topicLen = MQTTEncoder.convertToUTF8(topic,0,topic.length(),
+		private final int topicLen = RingBuffer.convertToUTF8(topic,0,topic.length(),
 				                                 values, topicPos, valuesMask);
 		
 		private final int payloadPos = 0 + topicLen;			
@@ -218,6 +299,7 @@ public class IntegrationTest {
 							
 				int count = messages;
 				while (--count>=0) {
+				    System.out.println(toSend+"  "+count);
 					while (-1==requestPublish(values, topicPos, topicLen, valuesMask, qualityOfService, retain, values, payloadPos, payloadLen, valuesMask)) {
 					}
 				}
@@ -226,10 +308,8 @@ public class IntegrationTest {
 				}
 							
 			} else {				
-				if (connectionsCounted>=iterations) {
-					requestShutdown();		
-					log.trace("shutdown of test was requested.");
-				}
+				requestShutdown();		
+				log.trace("shutdown of test was requested.");
 			}
 			
 		}
@@ -402,10 +482,18 @@ public class IntegrationTest {
 		
 	    StageScheduler scheduler = new ThreadPerStageScheduler(gm);
         scheduler.startup();
+        try {
+            Thread.sleep(10000);
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
         scheduler.awaitTermination(3, TimeUnit.SECONDS);		
+        
+        
 	}
 	    
-    @Ignore       
+    @Test       
     public void testQoS1() {
         //for this test we will use a known working broker and known working subscriber (both from eclipse)
         //we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.
@@ -425,24 +513,24 @@ public class IntegrationTest {
     }
     
     
-//    @Test       
-//    public void testQoS2() {
-//        //for this test we will use a known working broker and known working subscriber (both from eclipse)
-//        //we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.
-//        
-//        GraphManager gm = new GraphManager();
-//        APIStageFactory factory = new APIStageFactory() {
-//            @Override
-//            public APIStage newInstance(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn) {
-//                return new IntegrationTestQOS2Publish(gm, unusedIds, connectionOut, connectionIn, qos0ConnectionIterations, qos0Messages);
-//            }           
-//        };
-//        ClientAPIFactory.clientAPI(factory ,gm); //TODO:: Make own stage and in run measure to send value.
-//        
-//        StageScheduler scheduler = new ThreadPerStageScheduler(gm);
-//        scheduler.startup();
-//        scheduler.awaitTermination(3, TimeUnit.SECONDS);        
-//    }
+    @Test       
+    public void testQoS2() {
+        //for this test we will use a known working broker and known working subscriber (both from eclipse)
+        //we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.
+        
+        GraphManager gm = new GraphManager();
+        APIStageFactory factory = new APIStageFactory() {
+            @Override
+            public APIStage newInstance(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn) {
+                return new IntegrationTestQOS2Publish(gm, unusedIds, connectionOut, connectionIn, qos2ConnectionIterations, qos2Messages);
+            }           
+        };
+        ClientAPIFactory.clientAPI(factory ,gm); //TODO:: Make own stage and in run measure to send value.
+        
+        StageScheduler scheduler = new ThreadPerStageScheduler(gm);
+        scheduler.startup();
+        scheduler.awaitTermination(3, TimeUnit.SECONDS);        
+    }
 	
 	
 	

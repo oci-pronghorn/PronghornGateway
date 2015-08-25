@@ -1,7 +1,6 @@
 package com.ociweb.gateway.demo;
 
 import com.ociweb.gateway.client.APIStage;
-import com.ociweb.gateway.client.MQTTEncoder;
 import com.ociweb.pronghorn.ring.RingBuffer;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
@@ -68,17 +67,17 @@ public class ClockStage extends APIStage {
 	    int runningPos = 0;
 	    
 	    topicIdx = runningPos;
-	    topicLength = MQTTEncoder.convertToUTF8(TIME_TOPIC, 0, TIME_TOPIC.length(), workspace, runningPos, WORK_MASK);
+	    topicLength = RingBuffer.convertToUTF8(TIME_TOPIC, 0, TIME_TOPIC.length(), workspace, runningPos, WORK_MASK);
 	    runningPos += topicLength;	    
 	    assert(runningPos < WORK_SIZE);
 	    
 	    willTopicIdx = runningPos;
-	    willTopicLength = MQTTEncoder.convertToUTF8(EXIT_TOPIC, 0, EXIT_TOPIC.length(), workspace, runningPos, WORK_MASK);
+	    willTopicLength = RingBuffer.convertToUTF8(EXIT_TOPIC, 0, EXIT_TOPIC.length(), workspace, runningPos, WORK_MASK);
 	    runningPos += willTopicLength;      
 	    assert(runningPos < WORK_SIZE);
 	    
 	    willMessageBytesIdx = runningPos;
-        willMessageBytesLength = MQTTEncoder.convertToUTF8(EXIT_PAYLOAD, 0, EXIT_PAYLOAD.length(), workspace, runningPos, WORK_MASK);
+        willMessageBytesLength = RingBuffer.convertToUTF8(EXIT_PAYLOAD, 0, EXIT_PAYLOAD.length(), workspace, runningPos, WORK_MASK);
         runningPos += willMessageBytesLength;      
         assert(runningPos < WORK_SIZE);
         
@@ -127,6 +126,15 @@ public class ClockStage extends APIStage {
         
         long pubPos = requestPublish(workspace, topicIdx, topicLength, WORK_MASK, qualityOfService, retain, workspace, payloadIdx, payloadLength, WORK_MASK);
         readyForNewMessage = pubPos>=0;
+        
+        
+        //TEST TODO: when we disconnect every time it becomes corrupt and hangs.        
+        
+        while (!requestDisconnect()) {
+            //TODO: modify shutdown so we can pass the boolean back to the scheduler.
+        }
+        connected = false;
+        
 	}
 
 

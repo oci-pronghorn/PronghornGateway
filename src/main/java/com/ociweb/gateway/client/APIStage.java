@@ -146,10 +146,10 @@ public class APIStage extends PronghornStage {
 	                                  byte[] username, byte[] passwordBytes) {
 
 		if (RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_CONNECT)) {
-						
-			
+									
 			RingWriter.writeASCII(toCon, ConInConst.CON_IN_CONNECT_FIELD_URL, url);
 			
+			//this is the high level API however we are writing bytes to to the end of the unstructured buffer.
 			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
 			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
 			int byteMask = RingBuffer.byteMask(toCon);
@@ -174,6 +174,9 @@ public class APIStage extends PronghornStage {
 	protected boolean requestDisconnect() {
 		
 		if (RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_DISCONNECT)) {
+		    
+		    System.out.println("requext disconnect");
+		    
 			RingWriter.publishWrites(toCon);
 			return true;
 		} else {
