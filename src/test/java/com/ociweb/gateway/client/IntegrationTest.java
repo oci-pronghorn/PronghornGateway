@@ -1,6 +1,6 @@
 package com.ociweb.gateway.client;
 
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,18 +35,18 @@ public class IntegrationTest {
     private static Logger log = LoggerFactory.getLogger(IntegrationTest.class);
 	
 	private final static String qos0TestTopic = "root/qos0test/box/color";	
-	private final static int qos0ConnectionIterations = 2;
-	private final static int qos0Messages = 2;
+	private final static int qos0ConnectionIterations = 3;
+	private final static int qos0Messages = 5;  ///TODO: if this is a SMALL number and we connect/disconnect quickly the ring becomes broken.
 	private final static int qos0TestPayloadLength = 32;
 	
     private final static String qos1TestTopic = "root/qos1test/box/color";  
 	private final static int qos1ConnectionIterations = 2;
-	private final static int qos1Messages = 2;
+	private final static int qos1Messages = 30;
 	private final static int qos1TestPayloadLength = 32;
 	
     private final static String qos2TestTopic = "root/qos2test/box/color";  
     private final static int qos2ConnectionIterations = 2;
-    private final static int qos2Messages = 2;
+    private final static int qos2Messages = 7;
     private final static int qos2TestPayloadLength = 32;
 	
 	private static int qos0TestTotalCount = 0;
@@ -65,14 +65,7 @@ public class IntegrationTest {
 	
 	@AfterClass
 	public static void shutdown() {
-	    
-//	    if (0!=qos0TestTotalCount && qos0TestTotalCount<(qos0ConnectionIterations*qos0Messages) ) {
-//            fail("too few messages");
-//        }	 
-//       if (0!=qos1TestTotalCount && qos1TestTotalCount<(qos1ConnectionIterations*qos1Messages) ) {
-//            fail("too few messages");
-//        }      
-	    
+
 		try {
 			client.disconnect();
 			client.close();
@@ -222,7 +215,6 @@ public class IntegrationTest {
                                
                    int count = messages;
                    while (--count>=0) { 
-                       System.out.println(toSend+"  "+count);
                        long pos;
                        while (-1==(pos = requestPublish(values, topicPos, topicLen, valuesMask, qualityOfService, retain, values, payloadPos, payloadLen, valuesMask))) {
                        }
@@ -261,13 +253,14 @@ public class IntegrationTest {
 		
 		private final int messages;
 				
+		private RingBuffer connectionOut;
 		
 		public IntegrationTestQOS0Publish(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn, int iterations, int messages) {
 			super(gm,unusedIds,connectionOut,connectionIn,60);
 			this.toSend = iterations;
 			this.iterations =iterations;
 			this.messages = messages;
-			
+			this.connectionOut = connectionOut;
 			int i = payloadLen;
 			while (--i>=0) {
 				values[payloadPos+i] = (byte)i;
@@ -290,6 +283,7 @@ public class IntegrationTest {
 				byte[] username = empty;
 				byte[] passwordBytes = empty;
 				
+				
 				while (!requestConnect(url, conFlags, willTopic,0,0,0, willMessageBytes,0,0,0, username, passwordBytes)) {					
 				}
 						
@@ -299,13 +293,14 @@ public class IntegrationTest {
 							
 				int count = messages;
 				while (--count>=0) {
-				    System.out.println(toSend+"  "+count);
 					while (-1==requestPublish(values, topicPos, topicLen, valuesMask, qualityOfService, retain, values, payloadPos, payloadLen, valuesMask)) {
 					}
 				}
 				
+				
 				while (!requestDisconnect()) {					
 				}
+
 							
 			} else {				
 				requestShutdown();		
@@ -313,6 +308,9 @@ public class IntegrationTest {
 			}
 			
 		}
+		
+		
+		
 	}
 	
 	
@@ -407,6 +405,7 @@ public class IntegrationTest {
 					        fail("failue in payload data for QOS "+message.getQos());
 					    }
 					}
+					//System.out.println("OK XXXX");
 				} else if (1==message.getQos() && topic.equals(qos1TestTopic)) {
                     if (++qos1TestTotalCount>(qos1ConnectionIterations*qos1Messages) ) {
                         fail("too many messages");
@@ -470,34 +469,36 @@ public class IntegrationTest {
 	public void testQoS0() {
 		//for this test we will use a known working broker and known working subscriber (both from eclipse)
 		//we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.
-		
+        qos0TestTotalCount = 0;
 		GraphManager gm = new GraphManager();
 		APIStageFactory factory = new APIStageFactory() {
 			@Override
 			public APIStage newInstance(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn) {
 				return new IntegrationTestQOS0Publish(gm, unusedIds, connectionOut, connectionIn, qos0ConnectionIterations, qos0Messages);
-			}			
+			}		
 		};
 		ClientAPIFactory.clientAPI(factory ,gm); //TODO:: Make own stage and in run measure to send value.
 		
 	    StageScheduler scheduler = new ThreadPerStageScheduler(gm);
         scheduler.startup();
+        
         try {
-            Thread.sleep(10000);
+            Thread.sleep(3000);
         } catch (InterruptedException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
         }
-        scheduler.awaitTermination(3, TimeUnit.SECONDS);		
         
+        scheduler.awaitTermination(2, TimeUnit.SECONDS);		
         
+        assertEquals(qos0Messages*qos0ConnectionIterations, qos0TestTotalCount);
 	}
 	    
     @Test       
     public void testQoS1() {
         //for this test we will use a known working broker and known working subscriber (both from eclipse)
         //we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.
-        
+        qos1TestTotalCount = 0;
         GraphManager gm = new GraphManager();
         APIStageFactory factory = new APIStageFactory() {
             @Override
@@ -509,7 +510,9 @@ public class IntegrationTest {
         
         StageScheduler scheduler = new ThreadPerStageScheduler(gm);
         scheduler.startup();
-        scheduler.awaitTermination(3, TimeUnit.SECONDS);        
+        scheduler.awaitTermination(3, TimeUnit.SECONDS);       
+        
+        assertEquals(qos1Messages*qos1ConnectionIterations, qos1TestTotalCount);
     }
     
     

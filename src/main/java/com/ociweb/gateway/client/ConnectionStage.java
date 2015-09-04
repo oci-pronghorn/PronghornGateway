@@ -4,6 +4,7 @@ import static com.ociweb.pronghorn.ring.RingBuffer.roomToLowLevelWrite;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.NotYetConnectedException;
 import java.nio.channels.SocketChannel;
@@ -364,8 +365,13 @@ public class ConnectionStage extends PronghornStage {
     		//must be in connected or disconnected state before reading a fragment
     		if (notPendingConnect() && !hasPendingWrites() && RingReader.tryReadFragment(apiIn)) {
     			
-    			int msgIdx = RingReader.getMsgIdx(apiIn);
-    			log.debug("now reading message {}",ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]);
+    		    int msgIdx = RingReader.getMsgIdx(apiIn);
+    		    
+    	//	    System.err.println(apiIn.sizeOfUntructuredLayoutRingBuffer+"  "+apiIn+"  "+(RingBuffer.bytesWorkingHeadPosition(apiIn)-RingBuffer.bytesTailPosition(apiIn)));
+    	//	    System.err.println("ByteBase:"+RingBuffer.bytesReadBase(apiIn)+" for "+ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]+"   "+ RingBuffer.bytesWorkingTailPosition(apiIn));
+    		   
+    		    
+    			log.error("now reading message {}",ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]);
     			
     			switch (msgIdx) {
     				case ConInConst.MSG_CON_IN_CONNECT:	
@@ -376,15 +382,21 @@ public class ConnectionStage extends PronghornStage {
         					//only create new host iff it does not match the old value
         					if (null==addr || !RingReader.isEqual(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, addr.getHostString())) {
         					    //this is only for a new connection as defined from the api
-        					    commonBuilder.setLength(0);
-        					            					    
-        					    String host = RingReader.readASCII(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, commonBuilder).toString();        					    
-                                InetSocketAddress tempAddr = new InetSocketAddressImmutable(host, port);
-                                if (tempAddr.isUnresolved()) {
+        					    
+        					    commonBuilder.setLength(0);        					            					    
+        					    String host = RingReader.readASCII(apiIn, ConInConst.CON_IN_CONNECT_FIELD_URL, commonBuilder).toString();
+        					    
+                                InetSocketAddress tempAddr = null;
+                                try {
+                                    tempAddr = new InetSocketAddressImmutable(host, port);
+                                } catch (Throwable t) {
+                                    log.error("Reconnecting but new new host was unknown.",t);
+                                }
+                                if (null==tempAddr || tempAddr.isUnresolved()) {
                                     if (null==addr) {
                                         throw new RuntimeException("Unable to resolve host: "+host);
                                     }
-                                    log.error("Using last known host, Unable to resolve new host {}",host);
+                                    log.error("Using last known host {}, Unable to resolve new host {}",addr.getHostName(),host);
                                 } else {
                                     //safe to assign
                                     addr = tempAddr;
@@ -400,18 +412,20 @@ public class ConnectionStage extends PronghornStage {
         										
         					if (!connect(now)) {
         					    continueReason = 9;
+        					   // RingReader.releaseReadLock(apiIn);
         					    return;
         					}
         										
     					break;
     				case ConInConst.MSG_CON_IN_DISCONNECT:
-    				    System.out.println("dis mssg");
+    				    //System.out.println("dis mssg");
     				    
         					assert(STATE_CONNECTING!=state);								
         					if (!channel.isOpen()) {//unable to disconnect because it has already been done
         						state = STATE_DISCONNECTED;	
         						continueReason = 10;
         						System.out.println("unable to dis");
+        						//RingReader.releaseReadLock(apiIn);
         						return;				
         					}										
         					if (STATE_CONNECTED == state && channel.isOpen()) {					    			
@@ -421,7 +435,7 @@ public class ConnectionStage extends PronghornStage {
         							//NOTE: connect disconnect works perfect for qos0 so the problem must be cutting off the ack and the re-send on re-connect!!
         							
         							
-        							System.out.println("sent disconnect ");
+        							//System.out.println("sent disconnect ");
         							if (hasPendingWrites()) {
         							    System.err.println("********************** unclean shutdown");
         							    new Exception().printStackTrace();
@@ -438,6 +452,7 @@ public class ConnectionStage extends PronghornStage {
         						state = STATE_DISCONNECTED;
         						clearTimestamp();
         					}
+        					//RingReader.releaseReadLock(apiIn);
     					break;
     				case ConInConst.MSG_CON_IN_PUBLISH:
         					assert(STATE_CONNECTING!=state);    
@@ -460,6 +475,7 @@ public class ConnectionStage extends PronghornStage {
     					break;    						
     			}    			
     		
+    			
     			//only if there are NO unconfirmed messages outstanding.
     			assert(outstandingUnconfirmedMessages>=0);
     			if (0==outstandingUnconfirmedMessages && !hasPendingWrites()) {
