@@ -1,11 +1,11 @@
 package com.ociweb.gateway.client;
 
-import com.ociweb.pronghorn.ring.RingBuffer;
+import com.ociweb.pronghorn.pipe.Pipe;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
 public abstract class APIStageFactory {
 
-	public abstract APIStage newInstance(GraphManager gm, RingBuffer unusedIds, RingBuffer connectionOut, RingBuffer connectionIn);
+	public abstract APIStage newInstance(GraphManager gm, Pipe unusedIds, Pipe connectionOut, Pipe connectionIn);
 
     public String getRate() {
         return "0";
@@ -33,5 +33,17 @@ public abstract class APIStageFactory {
 
     public int getPort() {
         return 1883;
+    }
+
+    public int getQueuedIdsMaxCount() {
+       return 3;
+    }
+
+    public int getQueuedConInMaxCount() {
+        return 3;
+    }
+
+    public int getQueuedConOutMaxCount() {
+       return 20;
     }
 }

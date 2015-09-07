@@ -1,9 +1,9 @@
 package com.ociweb.gateway.client;
 
-import static com.ociweb.pronghorn.ring.RingBuffer.addMsgIdx;
-import static com.ociweb.pronghorn.ring.RingBuffer.contentToLowLevelRead;
-import static com.ociweb.pronghorn.ring.RingBuffer.publishWrites;
-import static com.ociweb.pronghorn.ring.RingBuffer.roomToLowLevelWrite;
+import static com.ociweb.pronghorn.pipe.Pipe.addMsgIdx;
+import static com.ociweb.pronghorn.pipe.Pipe.contentToLowLevelRead;
+import static com.ociweb.pronghorn.pipe.Pipe.publishWrites;
+import static com.ociweb.pronghorn.pipe.Pipe.roomToLowLevelWrite;
 
 import java.util.Random;
 
@@ -15,7 +15,7 @@ import com.ociweb.gateway.common.GGSGenerator;
 import com.ociweb.gateway.common.GVSValidator;
 import com.ociweb.gateway.common.IdGenStage;
 import com.ociweb.gateway.common.TestFailureDetails;
-import com.ociweb.pronghorn.ring.RingBuffer;
+import com.ociweb.pronghorn.pipe.Pipe;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
 public class IdGenStageBehavior{
@@ -42,9 +42,9 @@ public class IdGenStageBehavior{
 			private long stopTime = System.currentTimeMillis()+testDuration;
 			
 			@Override
-			public boolean generate(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs, Random random) {
+			public boolean generate(GraphManager graphManager, Pipe[] inputs, Pipe[] outputs, Random random) {
 				final int theOneMessage = 0;
-				int sizeOfFragment = RingBuffer.from(inputs[0]).fragDataSize[theOneMessage];
+				int sizeOfFragment = Pipe.from(inputs[0]).fragDataSize[theOneMessage];
 				int maxReturnBlockSize = 1+random.nextInt(2*IdGenStage.MAX_BLOCK_SIZE);// 1 up to 2x the block size used for reserving ranges
 				
 
@@ -73,7 +73,7 @@ public class IdGenStageBehavior{
 				assert(1==outputs.length) : "IdGen can only support a single queue of release ranges";
 				
 				
-				RingBuffer outputRing = outputs[0];
+				Pipe outputRing = outputs[0];
 				while ( tail<head && roomToLowLevelWrite(outputRing, sizeOfFragment)) {
 				    
 					addMsgIdx(outputRing, theOneMessage);	
@@ -99,22 +99,22 @@ public class IdGenStageBehavior{
 										
 					tail = t;
 					
-					RingBuffer.addIntValue(range, outputRing);
+					Pipe.addIntValue(range, outputRing);
 					
 					publishWrites(outputRing);
-					RingBuffer.confirmLowLevelWrite(outputRing, sizeOfFragment);
+					Pipe.confirmLowLevelWrite(outputRing, sizeOfFragment);
 				}
 								
 				
 				//get new ranges
 				int i = inputs.length;
 				while (--i>=0) {
-					RingBuffer inputRing = inputs[i];
+					Pipe inputRing = inputs[i];
 					while (contentToLowLevelRead(inputRing, sizeOfFragment) && ((tail+65534)-head)>IdGenStage.MAX_BLOCK_SIZE ) {
-						int msgIdx = RingBuffer.takeMsgIdx(inputRing);
+						int msgIdx = Pipe.takeMsgIdx(inputRing);
 						assert(theOneMessage == msgIdx);
 						
-						int range = RingBuffer.takeValue(inputRing);
+						int range = Pipe.takeValue(inputRing);
 						
 						debug("Generator consume range {}",range);
 										
@@ -133,8 +133,8 @@ public class IdGenStageBehavior{
 							values[mask & (int)head++] = idx++;
 						}						
 						
-						RingBuffer.releaseReads(inputRing);
-						RingBuffer.confirmLowLevelRead(inputRing, sizeOfFragment);
+						Pipe.releaseReads(inputRing);
+						Pipe.confirmLowLevelRead(inputRing, sizeOfFragment);
 					}
 				}
 	
@@ -154,8 +154,8 @@ public class IdGenStageBehavior{
 				final String[] label = new String[]{"Tested","Generator"};
 				
 				@Override
-				public TestFailureDetails validate(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs) {
-					int sizeOfFragment = RingBuffer.from(inputs[0]).fragDataSize[theOneMessage];
+				public TestFailureDetails validate(GraphManager graphManager, Pipe[] inputs, Pipe[] outputs) {
+					int sizeOfFragment = Pipe.from(inputs[0]).fragDataSize[theOneMessage];
 					assert(inputs.length == outputs.length);
 					assert(2 == outputs.length);
 	
@@ -174,13 +174,13 @@ public class IdGenStageBehavior{
 											
 						if (contentToLowLevelRead && roomToLowLevelWrite) {
 	
-							int msgIdx = RingBuffer.takeMsgIdx(inputs[expected]);
+							int msgIdx = Pipe.takeMsgIdx(inputs[expected]);
 							if (theOneMessage != msgIdx) {
 								System.err.println(label[expected]+" bad message found "+msgIdx);
 								return new TestFailureDetails("Corrupt Feed");
 							};
 	
-							final int range = RingBuffer.takeValue(inputs[expected]);
+							final int range = Pipe.takeValue(inputs[expected]);
 	
 							
 							
@@ -232,12 +232,12 @@ public class IdGenStageBehavior{
 							
 	
 							addMsgIdx(outputs[toggle], msgIdx);
-							RingBuffer.addIntValue(range, outputs[toggle]);
+							Pipe.addIntValue(range, outputs[toggle]);
 							publishWrites(outputs[toggle]);
-							RingBuffer.confirmLowLevelWrite(outputs[toggle], sizeOfFragment);
+							Pipe.confirmLowLevelWrite(outputs[toggle], sizeOfFragment);
 	
-							RingBuffer.releaseReads(inputs[expected]);
-							RingBuffer.confirmLowLevelRead(inputs[expected], sizeOfFragment);
+							Pipe.releaseReads(inputs[expected]);
+							Pipe.confirmLowLevelRead(inputs[expected], sizeOfFragment);
 						}
 					}
 					return null;

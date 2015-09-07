@@ -4,7 +4,7 @@ import org.junit.Test;
 
 import com.ociweb.gateway.client.ClientFromFactory;
 import com.ociweb.gateway.common.TestUtil;
-import com.ociweb.pronghorn.ring.FieldReferenceOffsetManager;
+import com.ociweb.pronghorn.pipe.FieldReferenceOffsetManager;
 
 public class ValidMessageTemplates {
 

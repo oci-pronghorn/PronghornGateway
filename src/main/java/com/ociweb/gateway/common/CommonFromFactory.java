@@ -1,6 +1,6 @@
 package com.ociweb.gateway.common;
 
-import com.ociweb.pronghorn.ring.FieldReferenceOffsetManager;
+import com.ociweb.pronghorn.pipe.FieldReferenceOffsetManager;
 
 public class CommonFromFactory {
 

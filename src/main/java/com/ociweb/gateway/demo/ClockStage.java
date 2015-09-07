@@ -1,7 +1,7 @@
 package com.ociweb.gateway.demo;
 
 import com.ociweb.gateway.client.APIStage;
-import com.ociweb.pronghorn.ring.RingBuffer;
+import com.ociweb.pronghorn.pipe.Pipe;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
 public class ClockStage extends APIStage {
@@ -26,7 +26,7 @@ public class ClockStage extends APIStage {
     
     boolean connected;
     
-    public ClockStage(GraphManager graphManager, RingBuffer idGenIn, RingBuffer fromC, RingBuffer toC, int ttlSec) {
+    public ClockStage(GraphManager graphManager, Pipe idGenIn, Pipe fromC, Pipe toC, int ttlSec) {
 		super(graphManager, idGenIn, fromC, toC, ttlSec);
 		
 		GraphManager.addAnnotation(graphManager, GraphManager.SCHEDULE_RATE, ClockApp.rate, this);
@@ -67,17 +67,17 @@ public class ClockStage extends APIStage {
 	    int runningPos = 0;
 	    
 	    topicIdx = runningPos;
-	    topicLength = RingBuffer.convertToUTF8(TIME_TOPIC, 0, TIME_TOPIC.length(), workspace, runningPos, WORK_MASK);
+	    topicLength = Pipe.convertToUTF8(TIME_TOPIC, 0, TIME_TOPIC.length(), workspace, runningPos, WORK_MASK);
 	    runningPos += topicLength;	    
 	    assert(runningPos < WORK_SIZE);
 	    
 	    willTopicIdx = runningPos;
-	    willTopicLength = RingBuffer.convertToUTF8(EXIT_TOPIC, 0, EXIT_TOPIC.length(), workspace, runningPos, WORK_MASK);
+	    willTopicLength = Pipe.convertToUTF8(EXIT_TOPIC, 0, EXIT_TOPIC.length(), workspace, runningPos, WORK_MASK);
 	    runningPos += willTopicLength;      
 	    assert(runningPos < WORK_SIZE);
 	    
 	    willMessageBytesIdx = runningPos;
-        willMessageBytesLength = RingBuffer.convertToUTF8(EXIT_PAYLOAD, 0, EXIT_PAYLOAD.length(), workspace, runningPos, WORK_MASK);
+        willMessageBytesLength = Pipe.convertToUTF8(EXIT_PAYLOAD, 0, EXIT_PAYLOAD.length(), workspace, runningPos, WORK_MASK);
         runningPos += willMessageBytesLength;      
         assert(runningPos < WORK_SIZE);
         

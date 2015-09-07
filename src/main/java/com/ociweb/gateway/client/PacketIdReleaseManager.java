@@ -1,7 +1,7 @@
 package com.ociweb.gateway.client;
 
-import com.ociweb.pronghorn.ring.RingBuffer;
-import com.ociweb.pronghorn.ring.RingReader;
+import com.ociweb.pronghorn.pipe.Pipe;
+import com.ociweb.pronghorn.pipe.PipeReader;
 
 public class PacketIdReleaseManager {
     private int firstConsumedPacketId;
@@ -23,74 +23,87 @@ public class PacketIdReleaseManager {
             //push the old range back to idGen
             int result = (instance.firstConsumedPacketId<<16) | (instance.lastConsumedPacketId+1);
             //before parse of incoming message we have already checked that there is room on the outgoing queue
-            RingBuffer.addMsgIdx(connectionStage.idGenOut, connectionStage.getIdMessageIdx);   
-            RingBuffer.addIntValue(result, connectionStage.idGenOut);
-            RingBuffer.publishWrites(connectionStage.idGenOut);  
-            RingBuffer.confirmLowLevelWrite(connectionStage.idGenOut, connectionStage.genIdMessageSize);
+            Pipe.addMsgIdx(connectionStage.idGenOut, connectionStage.getIdMessageIdx);   
+            Pipe.addIntValue(result, connectionStage.idGenOut);
+            Pipe.publishWrites(connectionStage.idGenOut);  
+            Pipe.confirmLowLevelWrite(connectionStage.idGenOut, connectionStage.genIdMessageSize);
             //now use packetIda as the beginning of a new group
             instance.firstConsumedPacketId = instance.lastConsumedPacketId = packetId;
         }
     }
 
-    public static void releaseMessage(PacketIdReleaseManager instance, ConnectionStage connectionStage, int packetId, int originalQoS) {	    
+    public static int releaseMessage(PacketIdReleaseManager instance, ConnectionStage connectionStage, int packetId, int originalQoS) {	    
     
-            RingBuffer.replayUnReleased(connectionStage.apiIn);
+            Pipe.replayUnReleased(connectionStage.apiIn);
             
-            boolean releaseEndFound = false;
+            int result = 0; //Must return the originalQoS only when it is found and cleared.
+            boolean foundMustNotReleasePoint = false;
             boolean replaying = true;
-            while (replaying && RingReader.tryReadFragment(connectionStage.apiIn)) {
+            while (replaying && PipeReader.tryReadFragment(connectionStage.apiIn)) {
                 //always checks one more, the current one which is not technically part of the replay.
-                replaying = RingBuffer.isReplaying(connectionStage.apiIn);	            
-                int msgIdx = RingReader.getMsgIdx(connectionStage.apiIn);
+                replaying = Pipe.isReplaying(connectionStage.apiIn);	            
+                int msgIdx = PipeReader.getMsgIdx(connectionStage.apiIn);
+                
                 //based on type 
-                if (originalQoS < 3 && ConInConst.MSG_CON_IN_PUBLISH == msgIdx) {                    
-                    releaseEndFound = releasePublishMessage(instance, connectionStage, packetId, originalQoS, releaseEndFound);
-                } else if (ConInConst.MSG_CON_IN_PUB_REL == msgIdx) {                    
-                    releasePubRelMessage(instance, connectionStage, packetId);
+                if (originalQoS < 3 && ConInConst.MSG_CON_IN_PUBLISH == msgIdx) {    
+                    int msgPacketId = PipeReader.readInt(connectionStage.apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETID);
+                
+                    if (!findMatchingPacketId(instance, connectionStage, packetId, originalQoS, msgPacketId)) {	       
+                        int qos = PipeReader.readInt(connectionStage.apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
+                        foundMustNotReleasePoint |= (qos>0);//skip over and release all qos zeros this only stops on un-confirmed 1 and 2	                
+                    } else {
+                        PipeReader.releaseReadLock(connectionStage.apiIn);
+                        result = originalQoS;
+                        //we found it so stop looking now
+                        if (!foundMustNotReleasePoint) {
+                            //System.out.println("A Released up to  "+RingBuffer.getWorkingTailPosition(connectionStage.apiIn));
+                            Pipe.releaseBatchedReadReleasesUpToThisPosition(connectionStage.apiIn);
+                        }
+                        break;
+                    }
+                    
+                } else if (originalQoS==3 && ConInConst.MSG_CON_IN_PUB_REL == msgIdx) {                    
+                    result = releasePubRelMessage(instance, connectionStage, packetId, originalQoS);
                 } else {
                     System.err.println("unkown "+msgIdx);
                 }	            	            
-                if (!releaseEndFound) {
-                    //release everything up to this point, only done while
-                    //the end is not found because we can only release the contiguous 
-                    //messages until we reach the fist unconfirmed message.
-                    RingBuffer.releaseReadLock(connectionStage.apiIn);
-                    //System.err.println("              pipe "+apiIn);
+                PipeReader.releaseReadLock(connectionStage.apiIn);
+                if (!foundMustNotReleasePoint) {
+                    System.out.println("B Released up to  "+Pipe.getWorkingTailPosition(connectionStage.apiIn)+"  "+connectionStage.apiIn+"  "+connectionStage.apiIn.sizeOfStructuredLayoutRingBuffer+" "+connectionStage.apiIn.sizeOfUntructuredLayoutRingBuffer);
+                    Pipe.releaseBatchedReadReleasesUpToThisPosition(connectionStage.apiIn);
                 }
             }
-            RingBuffer.cancelReplay(connectionStage.apiIn);
-            RingBuffer.releaseAllBatchedReads(connectionStage.apiIn);	        	    		
+            Pipe.cancelReplay(connectionStage.apiIn);
+            return result;
     }
 
-    private static void releasePubRelMessage(PacketIdReleaseManager instance, ConnectionStage connectionStage,
-            int packetId) {
-        int msgPacketId = RingReader.readInt(connectionStage.apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETID);
-        if (packetId == msgPacketId) {
-        
+    private static int releasePubRelMessage(PacketIdReleaseManager instance, ConnectionStage connectionStage,
+            int packetId, int origValue) {
+        int msgPacketId = PipeReader.readInt(connectionStage.apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETID);
+        if (packetId == msgPacketId) {        
             System.err.println("release for packet pubRel "+packetId);
             
             //we found the pubRel now clear it by setting the packet id negative
-            RingReader.readIntSecure(connectionStage.apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETID,-msgPacketId);
+            PipeReader.readIntSecure(connectionStage.apiIn, ConInConst.CON_IN_PUB_REL_FIELD_PACKETID,-msgPacketId);
             PacketIdReleaseManager.releasePacketId(instance, connectionStage, packetId);//This is the end of the QoS2 publish
+            return origValue;
         }
+        return 0;
     }
 
-    private static boolean releasePublishMessage(PacketIdReleaseManager instance, ConnectionStage connectionStage,
-            int packetId, int originalQoS, boolean releaseEndFound) {
-        int msgPacketId = RingReader.readInt(connectionStage.apiIn, ConInConst.CON_IN_PUBLISH_FIELD_PACKETID);
-        if (packetId == msgPacketId) {	                    
+    public static boolean findMatchingPacketId(PacketIdReleaseManager instance, ConnectionStage connectionStage,
+            int packetId, int originalQoS, int msgPacketId) {
+        boolean foundId = packetId == msgPacketId;
+        if (foundId) {
             //we found it, now clear the QoS and confirm that it was valid
-            int qos = RingReader.readIntSecure(connectionStage.apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS,-originalQoS);
+            int qos = PipeReader.readIntSecure(connectionStage.apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS,-originalQoS);
             if (1==qos) {
                 PacketIdReleaseManager.releasePacketId(instance, connectionStage, packetId);//This is the end of the QoS1 publish	                        
             } else if (qos<=0) {
                 //this conditional is checked last because it is not expected to be frequent
                 ConnectionStage.log.warn("reduntant ack");
             }
-        } else {
-            int qos = RingReader.readInt(connectionStage.apiIn, ConInConst.CON_IN_PUBLISH_FIELD_QOS);
-            releaseEndFound |= (qos>0);//skip over and release all qos zeros this only stops on un-confirmed 1 and 2	                
         }
-        return releaseEndFound;
+        return foundId;
     }
 }

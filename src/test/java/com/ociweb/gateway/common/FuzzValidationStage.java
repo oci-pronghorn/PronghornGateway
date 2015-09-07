@@ -2,11 +2,11 @@ package com.ociweb.gateway.common;
 
 import java.nio.ByteBuffer;
 
-import com.ociweb.pronghorn.ring.FieldReferenceOffsetManager;
-import com.ociweb.pronghorn.ring.RingBuffer;
-import com.ociweb.pronghorn.ring.stream.StreamingReadVisitor;
-import com.ociweb.pronghorn.ring.stream.StreamingReadVisitorToJSON;
-import com.ociweb.pronghorn.ring.stream.StreamingVisitorReader;
+import com.ociweb.pronghorn.pipe.FieldReferenceOffsetManager;
+import com.ociweb.pronghorn.pipe.Pipe;
+import com.ociweb.pronghorn.pipe.stream.StreamingReadVisitor;
+import com.ociweb.pronghorn.pipe.stream.StreamingReadVisitorToJSON;
+import com.ociweb.pronghorn.pipe.stream.StreamingVisitorReader;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
@@ -16,10 +16,10 @@ public class FuzzValidationStage extends PronghornStage{
 	private boolean foundError = false;
 	
 	
-	public FuzzValidationStage(GraphManager graphManager, RingBuffer input) {
+	public FuzzValidationStage(GraphManager graphManager, Pipe input) {
 		super(graphManager, input, NONE);
 
-		StreamingReadVisitor visitor = buildVisitor(RingBuffer.from(input));
+		StreamingReadVisitor visitor = buildVisitor(Pipe.from(input));
 		
         reader = new StreamingVisitorReader(input, visitor);//, new StreamingReadVisitorDebugDelegate(visitor) );
 		

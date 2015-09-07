@@ -1,7 +1,7 @@
 package com.ociweb.gateway.client;
 
-import static com.ociweb.pronghorn.ring.FieldReferenceOffsetManager.lookupFieldLocator;
-import static com.ociweb.pronghorn.ring.FieldReferenceOffsetManager.lookupTemplateLocator;
+import static com.ociweb.pronghorn.pipe.FieldReferenceOffsetManager.lookupFieldLocator;
+import static com.ociweb.pronghorn.pipe.FieldReferenceOffsetManager.lookupTemplateLocator;
 import static org.junit.Assert.assertEquals;
 
 import org.junit.Test;

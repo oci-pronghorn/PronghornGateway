@@ -2,8 +2,8 @@ package com.ociweb.gateway.client;
 
 import com.ociweb.gateway.common.CommonFromFactory;
 import com.ociweb.gateway.common.IdGenStage;
-import com.ociweb.pronghorn.ring.RingBuffer;
-import com.ociweb.pronghorn.ring.RingBufferConfig;
+import com.ociweb.pronghorn.pipe.Pipe;
+import com.ociweb.pronghorn.pipe.PipeConfig;
 import com.ociweb.pronghorn.stage.monitor.MonitorConsoleStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
@@ -14,26 +14,21 @@ public class ClientAPIFactory {
 	}
 	
 	public static APIStage clientAPI(APIStageFactory factory, GraphManager gm) {
-		int queuedIds = 3;
-		int queuedConIn = 4; //TODO: move to factory.
-		int queuedConOut = 4;
-		
-		return buildInstance(factory, gm, 
-				            queuedIds, queuedConIn, queuedConOut);
+		return buildInstance(factory, gm);
 	}
 
 	//NOTE: this will be generated from the DOT file in future projects, this is here as an example.
-	private static APIStage buildInstance(APIStageFactory factory, GraphManager gm, int queuedIds, int queuedConIn, int queuedConOut) {
+	private static APIStage buildInstance(APIStageFactory factory, GraphManager gm) {
 		
 	    String rate = factory.getRate();
-	    RingBufferConfig idGenConfig = new RingBufferConfig(CommonFromFactory.idRangesFROM, queuedIds, 0);		
-		RingBufferConfig connectionInConfig = new RingBufferConfig(ClientFromFactory.connectionInFROM, queuedConIn, factory.getMaxTopicPlusPayload());
-		RingBufferConfig connectionOutConfig = new RingBufferConfig(ClientFromFactory.connectionOutFROM, queuedConOut, factory.getMaxTopicPlusPayload());
+	    PipeConfig idGenConfig = new PipeConfig(CommonFromFactory.idRangesFROM, factory.getQueuedIdsMaxCount(), 0);		
+		PipeConfig connectionInConfig = new PipeConfig(ClientFromFactory.connectionInFROM, factory.getQueuedConInMaxCount(), factory.getMaxTopicPlusPayload());
+		PipeConfig connectionOutConfig = new PipeConfig(ClientFromFactory.connectionOutFROM, factory.getQueuedConOutMaxCount(), factory.getMaxTopicPlusPayload());
 						
-		RingBuffer unusedIds = new RingBuffer(idGenConfig);
-		RingBuffer releasedIds = new RingBuffer(idGenConfig);
-		RingBuffer connectionIn = new RingBuffer(connectionInConfig);
-		RingBuffer connectionOut = new RingBuffer(connectionOutConfig);
+		Pipe unusedIds = new Pipe(idGenConfig);
+		Pipe releasedIds = new Pipe(idGenConfig);
+		Pipe connectionIn = new Pipe(connectionInConfig);
+		Pipe connectionOut = new Pipe(connectionOutConfig);
 				
 
 		//these instances are all held by the graph which is passed in	
@@ -52,7 +47,7 @@ public class ClientAPIFactory {
 		    
 		    //TODO: B, replace with JMX version before release.
 			Long defaultMonitorRate = Long.valueOf(50000000);
-			RingBufferConfig defaultMonitorRingConfig = new RingBufferConfig(CommonFromFactory.monitorFROM, 5, 0);
+			PipeConfig defaultMonitorRingConfig = new PipeConfig(CommonFromFactory.monitorFROM, 5, 0);
 		    MonitorConsoleStage.attach(gm,defaultMonitorRate,defaultMonitorRingConfig); 
 		}
 		return apiStage;

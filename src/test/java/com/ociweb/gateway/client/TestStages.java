@@ -18,8 +18,8 @@ import com.ociweb.gateway.common.ExpectedUseGeneratorStage;
 import com.ociweb.gateway.common.ExpectedUseValidationStage;
 import com.ociweb.gateway.common.IdGenStage;
 import com.ociweb.gateway.demo.ClockStageFactory;
-import com.ociweb.pronghorn.ring.RingBuffer;
-import com.ociweb.pronghorn.ring.RingBufferConfig;
+import com.ociweb.pronghorn.pipe.Pipe;
+import com.ociweb.pronghorn.pipe.PipeConfig;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.monitor.MonitorConsoleStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
@@ -75,14 +75,14 @@ public class TestStages {
 
 					int inputs = GraphManager.getInputPipeCount(gm, stage);
 					//need array of RingBufferConfig objects.
-					RingBufferConfig[] inputConfigs = new RingBufferConfig[inputs];
+					PipeConfig[] inputConfigs = new PipeConfig[inputs];
 					int i = inputs;
 					while (--i>=0) {
 						inputConfigs[i]=GraphManager.getInputPipe(gm, stage, i).config();
 					}
 					
 					int outputs = GraphManager.getOutputPipeCount(gm, stage.stageId);
-					RingBufferConfig[] outputConfigs = new RingBufferConfig[outputs];
+					PipeConfig[] outputConfigs = new PipeConfig[outputs];
 					i = outputs;
 					while (--i>=0) {
 						outputConfigs[i]=GraphManager.getOutputPipe(gm, stage, i).config();
@@ -115,14 +115,14 @@ public class TestStages {
 
 					int inputs = GraphManager.getInputPipeCount(gm, stage);
 					//need array of RingBufferConfig objects.
-					RingBufferConfig[] inputConfigs = new RingBufferConfig[inputs];
+					PipeConfig[] inputConfigs = new PipeConfig[inputs];
 					int i = inputs;
 					while (--i>=0) {
 						inputConfigs[i]=GraphManager.getInputPipe(gm, stage, i).config();
 					}
 					
 					int outputs = GraphManager.getOutputPipeCount(gm, stage.stageId);
-					RingBufferConfig[] outputConfigs = new RingBufferConfig[outputs];
+					PipeConfig[] outputConfigs = new PipeConfig[outputs];
 					i = outputs;
 					while (--i>=0) {
 						outputConfigs[i]=GraphManager.getOutputPipe(gm, stage, i).config();
@@ -138,7 +138,7 @@ public class TestStages {
 	}
 	
 	
-	private void testSingleStageExpectedUseCase(Class targetStage, RingBufferConfig[] inputConfigs, RingBufferConfig[] outputConfigs) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
+	private void testSingleStageExpectedUseCase(Class targetStage, PipeConfig[] inputConfigs, PipeConfig[] outputConfigs) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
 		//TODO: each test must start at known clean state an not go far from there to ensure repro-script is very short.
 		long testDuration = 500; //keep short for now to save limited time on build server
 
@@ -158,7 +158,7 @@ public class TestStages {
 		
 	}
 
-	private void testSingleStageFuzz(Class targetStage, RingBufferConfig[] inputConfigs, RingBufferConfig[] outputConfigs) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
+	private void testSingleStageFuzz(Class targetStage, PipeConfig[] inputConfigs, PipeConfig[] outputConfigs) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException, InterruptedException {
 		//TODO: each test must start at known clean state an not go far from there to ensure repro-script is very short.
 		long testDuration = 500; //keep short for now to save limited time on build server
 
@@ -177,13 +177,13 @@ public class TestStages {
 		
 	}
 
-	private void runFuzzTest(Class targetStage, RingBufferConfig[] inputConfigs, RingBufferConfig[] outputConfigs, long testDuration, Random random) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
+	private void runFuzzTest(Class targetStage, PipeConfig[] inputConfigs, PipeConfig[] outputConfigs, long testDuration, Random random) throws NoSuchMethodException, SecurityException, InstantiationException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
 		log.info("begin 'fuzz' testing {}",targetStage);
 		
 		GraphManager gm = new GraphManager();
 		
-		RingBuffer[] inputRings = buildRings(inputConfigs);	
-		RingBuffer[] outputRings = buildRings(outputConfigs);	
+		Pipe[] inputRings = buildRings(inputConfigs);	
+		Pipe[] outputRings = buildRings(outputConfigs);	
 		
 		int i = inputRings.length;
 		while (--i>=0) {
@@ -225,10 +225,10 @@ public class TestStages {
 		}
 		
 		if (!cleanTerminate || foundError) {
-			for (RingBuffer ring: outputRings) {
+			for (Pipe ring: outputRings) {
 				log.info("{}->Valdate {}",targetStage,ring);
 			}
-			for (RingBuffer ring: inputRings) {
+			for (Pipe ring: inputRings) {
 				log.info("Generate->{} {}",targetStage,ring);
 			}			
 		}
@@ -242,8 +242,8 @@ public class TestStages {
 	 * Specific details of each tested stage must be passed in.
 	 * 
 	 */
-	private void runExpectedUseTest(Class targetStage, RingBufferConfig[] inputConfigs,
-			RingBufferConfig[] outputConfigs, final long testDuration, GVSValidator validator, GGSGenerator generator,
+	private void runExpectedUseTest(Class targetStage, PipeConfig[] inputConfigs,
+			PipeConfig[] outputConfigs, final long testDuration, GVSValidator validator, GGSGenerator generator,
 			Random random) throws NoSuchMethodException, InstantiationException, IllegalAccessException,
 					InvocationTargetException {
 		
@@ -252,16 +252,16 @@ public class TestStages {
 		GraphManager gm = new GraphManager();
 		
 		//NOTE: Uses RingBufferConfig queue size so we only test for the case that is built and deployed.		
-		RingBuffer[] testedToValidate = buildRings(outputConfigs);
-		RingBuffer[] validateToGenerate = buildRings(outputConfigs);		
-		RingBuffer[] validateToTested = buildRings(inputConfigs);			
-		RingBuffer[] generateToValidate = buildRings(inputConfigs);
+		Pipe[] testedToValidate = buildRings(outputConfigs);
+		Pipe[] validateToGenerate = buildRings(outputConfigs);		
+		Pipe[] validateToTested = buildRings(inputConfigs);			
+		Pipe[] generateToValidate = buildRings(inputConfigs);
 		
-		RingBuffer[] validationInputs = joinArrays(testedToValidate, generateToValidate);
-		RingBuffer[] validationOutputs = joinArrays(validateToTested, validateToGenerate);
+		Pipe[] validationInputs = joinArrays(testedToValidate, generateToValidate);
+		Pipe[] validationOutputs = joinArrays(validateToTested, validateToGenerate);
 		
-		RingBuffer[] generatorInputs = validateToGenerate;
-		RingBuffer[] generatorOutputs = generateToValidate;
+		Pipe[] generatorInputs = validateToGenerate;
+		Pipe[] generatorOutputs = generateToValidate;
 		
 		Constructor constructor = targetStage.getConstructor(gm.getClass(), validateToTested.getClass(), testedToValidate.getClass());
 
@@ -285,34 +285,34 @@ public class TestStages {
 		scheduler.startup();		
 		
 		if (!scheduler.awaitTermination(testDuration+SHUTDOWN_WINDOW, TimeUnit.MILLISECONDS) || valdiationStage.foundError()) {
-			for (RingBuffer ring: testedToValidate) {
+			for (Pipe ring: testedToValidate) {
 				log.info("{}->Valdate {}",targetStage,ring);
 			}
-			for (RingBuffer ring: validateToTested) {
+			for (Pipe ring: validateToTested) {
 				log.info("Validate->{} {}",targetStage,ring);
 			}
-			for (RingBuffer ring: validateToGenerate) {
+			for (Pipe ring: validateToGenerate) {
 				log.info("Validate->Generate {}",targetStage,ring);
 			}
-			for (RingBuffer ring: generateToValidate) {
+			for (Pipe ring: generateToValidate) {
 				log.info("Generate->Validate {}",targetStage,ring);
 			}			
 		}
 	}
 
 
-	private RingBuffer[] buildRings(RingBufferConfig[] configs) {
+	private Pipe[] buildRings(PipeConfig[] configs) {
 		int i = configs.length;
-		RingBuffer[] result = new RingBuffer[i];
+		Pipe[] result = new Pipe[i];
 		while (--i>=0) {
-			result[i] = new RingBuffer(configs[i]);
+			result[i] = new Pipe(configs[i]);
 		}		
 		return result;
 	}
 	
-	private RingBuffer[] joinArrays(RingBuffer[] a, RingBuffer[] b) {
+	private Pipe[] joinArrays(Pipe[] a, Pipe[] b) {
 		int len = a.length+b.length;
-		RingBuffer[] result = new RingBuffer[len];
+		Pipe[] result = new Pipe[len];
 		int i = b.length;
 		while (--i>=0) {
 			result[--len] = b[i];

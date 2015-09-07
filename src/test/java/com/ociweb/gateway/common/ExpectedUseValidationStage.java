@@ -2,19 +2,19 @@ package com.ociweb.gateway.common;
 
 import org.junit.Assert;
 
-import com.ociweb.pronghorn.ring.RingBuffer;
+import com.ociweb.pronghorn.pipe.Pipe;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
 public class ExpectedUseValidationStage extends PronghornStage{
 
-	private final RingBuffer[] inputs;
-	private final RingBuffer[] outputs;
+	private final Pipe[] inputs;
+	private final Pipe[] outputs;
 	private final GraphManager graphManager;
 	private final GVSValidator validator;
 	private boolean foundError = false;
 	
-	public ExpectedUseValidationStage(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs, GVSValidator validator) {
+	public ExpectedUseValidationStage(GraphManager graphManager, Pipe[] inputs, Pipe[] outputs, GVSValidator validator) {
 		super(graphManager, inputs, outputs);
 		this.inputs = inputs;
 		this.outputs = outputs;

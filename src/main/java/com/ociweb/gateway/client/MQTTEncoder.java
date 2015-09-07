@@ -1,6 +1,8 @@
 package com.ociweb.gateway.client;
 
-import com.ociweb.pronghorn.ring.RingBuffer;
+import java.util.Arrays;
+
+import com.ociweb.pronghorn.pipe.Pipe;
 
 public class MQTTEncoder {
 
@@ -135,13 +137,13 @@ public class MQTTEncoder {
 	}
 
 	private static int appendShort(int bytePos, int byteMask, byte[] byteBuffer, int value) {
-		byteBuffer[byteMask&bytePos++] = (byte)(0xFF&(value>>8));
-		byteBuffer[byteMask&bytePos++] = (byte)(0xFF&value);
+		byteBuffer[byteMask & bytePos++] = (byte)(0xFF&(value>>8));
+		byteBuffer[byteMask & bytePos++] = (byte)(0xFF&value);
 		return bytePos;
 	}
 
 	private static int appendBytes(int targetPos, int targetMask, byte[] targetBuffer, byte[] srcBuffer, int srcIdx, int srcLength, int srcMask) {
-		RingBuffer.copyBytesFromToRing(srcBuffer, srcIdx, srcMask, targetBuffer, targetPos, targetMask, srcLength);
+		Pipe.copyBytesFromToRing(srcBuffer, srcIdx, srcMask, targetBuffer, targetPos, targetMask, srcLength);
 		return targetPos+srcLength;
 	}
 
@@ -159,7 +161,7 @@ public class MQTTEncoder {
 		
 		assert(length<(topicMask+payloadMask)) : "Length is far too large and can not be right"; //TODO: C, be sure server side checks this and rejects bad values.
 				
-		final int pubHead = 0x30 | (0x3&(qos<<1)) | 1&retain; //bit 3 dup is zero which is modified later
+		final int pubHead = 0x30 | (0x6&(qos<<1)) | 1&retain; //bit 3 dup is zero which is modified later
 		bytePos = appendFixedHeader(bytePos, byteMask, byteBuffer, pubHead, length); //const and remaining length, 2  bytes
 		assert(topicLength>0);
 		
@@ -167,12 +169,23 @@ public class MQTTEncoder {
 		bytePos = appendShort(bytePos, byteMask, byteBuffer, topicLength);
 		bytePos = appendBytes(bytePos, byteMask, byteBuffer, topic, topicIdx, topicLength, topicMask);
 		
-		if (packetId>=0) {//TODO: B, we have 3 conditionals around this packet id change on QOS, must remove.
-			bytePos = appendShort(bytePos, byteMask, byteBuffer, packetId);
+		if (packetId>=0) {//TODO: B, we have 3 conditionals around this packet id change on QOS, must remove.\
+		 //   byte a = (byte)(0xFF&(packetId>>8));
+		//    byte b = (byte)(0xFF&packetId);
+		    bytePos = appendShort(bytePos, byteMask, byteBuffer, packetId);
+
+	//	    System.out.println("APPENDED packet id to "+packetId+"  "+byteBuffer[byteMask&(bytePos-2)]+"  "+byteBuffer[byteMask&(bytePos-1)]+"   "+a+"  "+b);
+		    
 		}
+		
+		
 		//payload - note it does not record the length first, its just the remaining space
 		bytePos = appendBytes(bytePos, byteMask, byteBuffer, payload, payloadIdx, payloadLength, payloadMask);
 		
+		
+		
+		//todo: BUILD THIS DEBUG MESSAGE INTO rINGbUFFER.
+//		System.out.println("BUILT:"+Arrays.toString(Arrays.copyOfRange(byteBuffer, firstPos, bytePos)));
 		//total length is needed to close out this var length field in the queue
 		return bytePos-firstPos;
 	}

@@ -1,16 +1,18 @@
 package com.ociweb.gateway.client;
 
-import com.ociweb.pronghorn.ring.RingBuffer;
-import com.ociweb.pronghorn.ring.RingReader;
-import com.ociweb.pronghorn.ring.RingWriter;
+import java.util.Arrays;
+
+import com.ociweb.pronghorn.pipe.Pipe;
+import com.ociweb.pronghorn.pipe.PipeReader;
+import com.ociweb.pronghorn.pipe.PipeWriter;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
 public class APIStage extends PronghornStage {
 
-	private final RingBuffer fromCon; //directly populated by external method calls, eg unknown thread
-	private final RingBuffer idGenIn; //used by same external thread
-	private final RingBuffer toCon;
+	private final Pipe fromCon; //directly populated by external method calls, eg unknown thread
+	private final Pipe idGenIn; //used by same external thread
+	private final Pipe toCon;
 	 	
 	private int nextFreePacketId = -1;
 	private int nextFreePacketIdLimit = -1;
@@ -29,8 +31,8 @@ public class APIStage extends PronghornStage {
 	private static final int theOneMsg = 0;// there is only 1 message supported by this stage
 	
 	
-	protected APIStage(GraphManager graphManager, RingBuffer idGenIn, RingBuffer fromC, RingBuffer toC, int ttlSec) {
-		super(graphManager, new RingBuffer[]{idGenIn,fromC}, toC);
+	protected APIStage(GraphManager graphManager, Pipe idGenIn, Pipe fromC, Pipe toC, int ttlSec) {
+		super(graphManager, new Pipe[]{idGenIn,fromC}, toC);
 	
 		this.idGenIn = idGenIn;
 		this.fromCon = fromC;
@@ -38,7 +40,7 @@ public class APIStage extends PronghornStage {
 		
 		this.ttlSec = ttlSec;
 			  	
-        this.sizeOfPacketIdFragment = RingBuffer.from(idGenIn).fragDataSize[theOneMsg];
+        this.sizeOfPacketIdFragment = Pipe.from(idGenIn).fragDataSize[theOneMsg];
         
         //add one more ring buffer so apps can write directly to it since this stage needs to copy from something.
         //this makes testing much easier, it makes integration tighter
@@ -53,9 +55,12 @@ public class APIStage extends PronghornStage {
 
 	@Override
 	public void run() {
-		
-		while (RingReader.tryReadFragment(fromCon)) {	
-			int msgIdx = RingReader.getMsgIdx(fromCon);
+		 
+		while (PipeReader.tryReadFragment(fromCon)) {	
+			int msgIdx = PipeReader.getMsgIdx(fromCon);
+			
+			System.out.println("got message: "+msgIdx);
+			
 			int packetId;
 			switch(msgIdx) {
 				case ConOutConst.MSG_CON_OUT_CONNACK_OK:
@@ -69,44 +74,43 @@ public class APIStage extends PronghornStage {
 					newConnectionError(msgIdx);
 				break;	
 				case ConOutConst.MSG_CON_OUT_PUB_REL:
-				    packetId = RingReader.readInt(fromCon, ConOutConst.CON_OUT_PUB_REL_FIELD_PACKETID);
+				    packetId = PipeReader.readInt(fromCon, ConOutConst.CON_OUT_PUB_REL_FIELD_PACKETID);
 				    //subscriber logic
 				    //TODO: now send pubcomp message to be sent 
 				    
 				    
 				break;
 				case ConOutConst.MSG_CON_OUT_PUB_ACK:
-				    packetId = RingReader.readInt(fromCon, ConOutConst.CON_OUT_PUB_ACK_FIELD_PACKETID);
+				    packetId = PipeReader.readInt(fromCon, ConOutConst.CON_OUT_PUB_ACK_FIELD_PACKETID);
 				    //System.out.println("ack packet "+packetId+" "+fromCon);
 				    ackReceived1(packetId);
 				    
 				break;    
 				case ConOutConst.MSG_CON_OUT_PUB_REC:
-				    packetId = RingReader.readInt(fromCon, ConOutConst.CON_OUT_PUB_REC_FIELD_PACKETID);
+				    packetId = PipeReader.readInt(fromCon, ConOutConst.CON_OUT_PUB_REC_FIELD_PACKETID);
 				    
 				    ackReceived2(packetId);
 				    
-				    while (!RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_PUB_REL)) {	//TODO: rewrite as non-blocking. do not read unless we have this output room!			        
+				    while (!PipeWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_PUB_REL)) {	//TODO: rewrite as non-blocking. do not read unless we have this output room!			        
 				    }
 				    
-				    RingWriter.writeInt(toCon,  ConInConst.CON_IN_PUB_REL_FIELD_PACKETID, packetId);
+				    PipeWriter.writeInt(toCon,  ConInConst.CON_IN_PUB_REL_FIELD_PACKETID, packetId);
 				   
-		            final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
-		            byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
-		            int byteMask = RingBuffer.byteMask(toCon);
+		            final int bytePos = Pipe.bytesWorkingHeadPosition(toCon);
+		            byte[] byteBuffer = Pipe.byteBuffer(toCon);
+		            int byteMask = Pipe.byteMask(toCon);
 		            
 				    int len = MQTTEncoder.buildPubRelPacket(bytePos, byteBuffer, byteMask, packetId);
 	                             
-		            RingWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_PUB_REL_FIELD_PACKETDATA, len, bytePos);
+		            PipeWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_PUB_REL_FIELD_PACKETDATA, len, bytePos);
 		            
-		            RingWriter.publishWrites(toCon);
+		            PipeWriter.publishWrites(toCon);
 				    
 				break;
 				default:
 					
 			}
-			RingReader.releaseReadLock(fromCon);
-			//System.out.println("                "+fromCon);
+			PipeReader.releaseReadLock(fromCon);
 		}
 		businessLogic();
 	}
@@ -145,14 +149,14 @@ public class APIStage extends PronghornStage {
 	                                  byte[] willMessageBytes, int willMessageBytesIdx, int willMessageBytesLength, int willMessageBytesMask,
 	                                  byte[] username, byte[] passwordBytes) {
 
-		if (RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_CONNECT)) {
+		if (PipeWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_CONNECT)) {
 			
-			RingWriter.writeASCII(toCon, ConInConst.CON_IN_CONNECT_FIELD_URL, url);
+			PipeWriter.writeASCII(toCon, ConInConst.CON_IN_CONNECT_FIELD_URL, url);
 						
 			//this is the high level API however we are writing bytes to to the end of the unstructured buffer.
-			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
-			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
-			int byteMask = RingBuffer.byteMask(toCon);
+			final int bytePos = Pipe.bytesWorkingHeadPosition(toCon);
+			byte[] byteBuffer = Pipe.byteBuffer(toCon);
+			int byteMask = Pipe.byteMask(toCon);
 						
 			int len = MQTTEncoder.buildConnectPacket(bytePos, byteBuffer, byteMask, ttlSec, conFlags, 
 					                                 clientId, 0 , clientId.length, 0xFFFF,
@@ -161,9 +165,9 @@ public class APIStage extends PronghornStage {
 					                                 username, 0, username.length, 0xFFFF, //TODO: add rest of fields
 					                                 passwordBytes, 0, passwordBytes.length, 0xFFFF);//TODO: add rest of fields
 			assert(len>0);
-			RingWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA, len, bytePos);
+			PipeWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_CONNECT_FIELD_PACKETDATA, len, bytePos);
 			
-			RingWriter.publishWrites(toCon);
+			PipeWriter.publishWrites(toCon);
 			return true;
 		} else {
 			return false;
@@ -175,9 +179,9 @@ public class APIStage extends PronghornStage {
 		
 	//    System.err.println("AAA :"+RingBuffer.bytesWriteBase(toCon));
 	    
-		if (RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_DISCONNECT)) {
+		if (PipeWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_DISCONNECT)) {
 		//    System.err.println("BBB :"+RingBuffer.bytesWriteBase(toCon));
-			RingWriter.publishWrites(toCon);
+			PipeWriter.publishWrites(toCon);
 	//		 System.err.println("CCCC :"+RingBuffer.bytesWriteBase(toCon));
 			return true;
 		} else {
@@ -192,7 +196,7 @@ public class APIStage extends PronghornStage {
 				
 		if (nextFreePacketId >= nextFreePacketIdLimit) {
 			//get next range
-			if (RingBuffer.contentToLowLevelRead(idGenIn, sizeOfPacketIdFragment)) {				
+			if (Pipe.contentToLowLevelRead(idGenIn, sizeOfPacketIdFragment)) {				
 				loadNextPacketIdRange();				
 			} else {
 				return -1;
@@ -200,25 +204,26 @@ public class APIStage extends PronghornStage {
 		}
 		////
 		
-		if (RingWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_PUBLISH)) {
+		if (PipeWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_PUBLISH)) {
 						
-			RingWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_QOS, qualityOfService);
+		    
+			PipeWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_QOS, qualityOfService);
 			
 			int localPacketId = (0==qualityOfService) ? -1 : nextFreePacketId++;
-			
-			RingWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETID, localPacketId);
 						
-			final int bytePos = RingBuffer.bytesWorkingHeadPosition(toCon);
-			byte[] byteBuffer = RingBuffer.byteBuffer(toCon);
-			int byteMask = RingBuffer.byteMask(toCon);
+			PipeWriter.writeInt(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETID, localPacketId);
+						
+			final int bytePos = Pipe.bytesWorkingHeadPosition(toCon);
+			byte[] byteBuffer = Pipe.byteBuffer(toCon);
+			int byteMask = Pipe.byteMask(toCon);
 			
 			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, qualityOfService, retain, 
 					                topic, topicIdx, topicLength, topicMask, 
 					                payload, payloadIdx, payloadLength, payloadMask, localPacketId);
-			RingWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
+			PipeWriter.writeSpecialBytesPosAndLen(toCon, ConInConst.CON_IN_PUBLISH_FIELD_PACKETDATA, len, bytePos);
 				
-			RingWriter.publishWrites(toCon);
-						
+			PipeWriter.publishWrites(toCon);
+
 			return localPacketId<0 ? 0 : localPacketId;//TODO: we have no id for qos 0 this is dirty.
 		} else {
 			return -1;
@@ -228,15 +233,15 @@ public class APIStage extends PronghornStage {
 
 
 	private void loadNextPacketIdRange() {
-		int msgIdx = RingBuffer.takeMsgIdx(idGenIn);
+		int msgIdx = Pipe.takeMsgIdx(idGenIn);
 		assert(theOneMsg == msgIdx);
 		
-		int range = RingBuffer.takeValue(idGenIn);
+		int range = Pipe.takeValue(idGenIn);
 		nextFreePacketId = 0xFFFF&range;
 		nextFreePacketIdLimit = 0xFFFF&(range>>16); 
 						
-		RingBuffer.releaseReads(idGenIn);
-		RingBuffer.confirmLowLevelRead(idGenIn, sizeOfPacketIdFragment);
+		Pipe.releaseReads(idGenIn);
+		Pipe.confirmLowLevelRead(idGenIn, sizeOfPacketIdFragment);
 	}
 	
 }

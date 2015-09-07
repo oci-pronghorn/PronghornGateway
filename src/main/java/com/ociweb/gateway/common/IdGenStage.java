@@ -1,12 +1,12 @@
 package com.ociweb.gateway.common;
 
-import static com.ociweb.pronghorn.ring.RingBuffer.*;
+import static com.ociweb.pronghorn.pipe.Pipe.*;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.ociweb.gateway.demo.ClockApp;
-import com.ociweb.pronghorn.ring.RingBuffer;
+import com.ociweb.pronghorn.pipe.Pipe;
 import com.ociweb.pronghorn.stage.PronghornStage;
 import com.ociweb.pronghorn.stage.scheduling.GraphManager;
 
@@ -32,27 +32,30 @@ public class IdGenStage extends PronghornStage {
 	private int[] consumedRanges;
 	private int totalRanges = 0;
 	
-	private final RingBuffer[] inputs;
-	private final RingBuffer[] outputs;	
+	private final Pipe[] inputs;
+	private final Pipe[] outputs;	
 	private final int sizeOfFragment;
 	private static final int theOneMsg = 0;// there is only 1 message supported by this stage
 		
-	public IdGenStage(GraphManager graphManager, RingBuffer input, RingBuffer output, String rate) {
+	public IdGenStage(GraphManager graphManager, Pipe input, Pipe output, String rate) {
 		super(graphManager, input, output);
-		this.inputs = new RingBuffer[]{input};
-		this.outputs = new RingBuffer[]{output};
-		assert(RingBuffer.from(input).equals(RingBuffer.from(output))) : "Both must have same message types ";	
-		this.sizeOfFragment = RingBuffer.from(input).fragDataSize[theOneMsg];
+		this.inputs = new Pipe[]{input};
+		this.outputs = new Pipe[]{output};
+		assert(Pipe.from(input).equals(Pipe.from(output))) : "Both must have same message types ";	
+		this.sizeOfFragment = Pipe.from(input).fragDataSize[theOneMsg];
 		
 		GraphManager.addAnnotation(graphManager, GraphManager.SCHEDULE_RATE, rate, this);
+		
+		//must be set so this stage will get shut down and ignore the fact that is has un-consumed messages coming in 
+        GraphManager.addAnnotation(graphManager,GraphManager.PRODUCER, GraphManager.PRODUCER, this);
 	}
 	
-	public IdGenStage(GraphManager graphManager, RingBuffer[] inputs, RingBuffer[] outputs) {
+	public IdGenStage(GraphManager graphManager, Pipe[] inputs, Pipe[] outputs) {
 		super(graphManager, inputs, outputs);
 		this.inputs = inputs;
 		this.outputs = outputs;
 		//TODO: add assert to confirm that all the inputs and outputs have the same eq from.
-		this.sizeOfFragment = RingBuffer.from(inputs[0]).fragDataSize[theOneMsg];
+		this.sizeOfFragment = Pipe.from(inputs[0]).fragDataSize[theOneMsg];
 	}
 
 	@Override
@@ -66,26 +69,26 @@ public class IdGenStage extends PronghornStage {
 		//pull in all the released ranges first so we have them to give back out again.
 		int i = inputs.length;
 		while (--i>=0) {
-			RingBuffer inputRing = inputs[i];
+			Pipe inputRing = inputs[i];
 			while (contentToLowLevelRead(inputRing, sizeOfFragment) && 
 				   totalRanges<MAX_CONSUMED_BLOCKS_LIMIT) // only release blocks if we have room, just in case one splits, back-pressure 
 			{
-				int msgIdx = RingBuffer.takeMsgIdx(inputRing);
+				int msgIdx = Pipe.takeMsgIdx(inputRing);
 				assert(theOneMsg == msgIdx);
 				
-				releaseRange(RingBuffer.takeValue(inputRing));
+				releaseRange(Pipe.takeValue(inputRing));
 				
 				//TODO: do we send the reset request here or earler or later?
 				
-				RingBuffer.releaseReads(inputRing);
-				RingBuffer.confirmLowLevelRead(inputRing, sizeOfFragment);
+				Pipe.releaseReads(inputRing);
+				Pipe.confirmLowLevelRead(inputRing, sizeOfFragment);
 			}
 		}
 		
 		//push out all the new ranges for use as long as we have values and the queues have room
 		int j = outputs.length;
 		while (--j>=0) {
-			RingBuffer outputRing = outputs[j];
+			Pipe outputRing = outputs[j];
 			while (roomToLowLevelWrite(outputRing, sizeOfFragment) ) {
 			    				
 				int range = reserveNewRange();
@@ -94,9 +97,9 @@ public class IdGenStage extends PronghornStage {
 				} 
 				
 				addMsgIdx(outputRing, theOneMsg);	
-				RingBuffer.addIntValue(range, outputRing);
+				Pipe.addIntValue(range, outputRing);
 				publishWrites(outputRing);	
-				RingBuffer.confirmLowLevelWrite(outputRing, sizeOfFragment);
+				Pipe.confirmLowLevelWrite(outputRing, sizeOfFragment);
 			}
 		}
 	

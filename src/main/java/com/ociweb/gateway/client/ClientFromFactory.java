@@ -1,6 +1,6 @@
 package com.ociweb.gateway.client;
 
-import com.ociweb.pronghorn.ring.FieldReferenceOffsetManager;
+import com.ociweb.pronghorn.pipe.FieldReferenceOffsetManager;
 
 public class ClientFromFactory {
 

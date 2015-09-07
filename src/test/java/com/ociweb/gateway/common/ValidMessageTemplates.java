@@ -2,7 +2,7 @@ package com.ociweb.gateway.common;
 
 import org.junit.Test;
 
-import com.ociweb.pronghorn.ring.FieldReferenceOffsetManager;
+import com.ociweb.pronghorn.pipe.FieldReferenceOffsetManager;
 import com.ociweb.pronghorn.stage.monitor.MonitorFROM;
 
 public class ValidMessageTemplates {
