@@ -6,3 +6,9 @@ pom.xml.next
 release.properties
 dependency-reduced-pom.xml
 buildNumber.properties
+/.settings/
+/.classpath
+/.project
+/moquette_store.mapdb
+/moquette_store.mapdb.p
+/moquette_store.mapdb.t
