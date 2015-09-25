@@ -4,12 +4,11 @@ import static com.ociweb.pronghorn.pipe.Pipe.roomToLowLevelWrite;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
+import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.NotYetConnectedException;
 import java.nio.channels.SocketChannel;
 import java.nio.channels.spi.SelectorProvider;
-import java.util.Arrays;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -129,6 +128,7 @@ public class ConnectionStage extends PronghornStage {
 		
 		//must keep re-setting this value
 		Pipe.batchAllReleases(apiIn);
+		Pipe.setPublishBatchSize(apiOut, 0); //Do not store up acks send them immediately
 		
 		GraphManager.addAnnotation(graphManager, GraphManager.SCHEDULE_RATE, rate, this);
 		
@@ -373,8 +373,8 @@ public class ConnectionStage extends PronghornStage {
     			
     		    int msgIdx = PipeReader.getMsgIdx(apiIn);
     		    
-    	//	    System.err.println(apiIn.sizeOfUntructuredLayoutRingBuffer+"  "+apiIn+"  "+(RingBuffer.bytesWorkingHeadPosition(apiIn)-RingBuffer.bytesTailPosition(apiIn)));
-    	//	    System.out.println("ByteBase:"+RingBuffer.bytesReadBase(apiIn)+" for "+ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]+"   "+ RingBuffer.bytesWorkingTailPosition(apiIn)+"   "+ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]);
+    		  //  System.err.println(apiIn.sizeOfUntructuredLayoutRingBuffer+"  "+apiIn+"  "+(Pipe.bytesWorkingHeadPosition(apiIn)-Pipe.bytesTailPosition(apiIn)));
+    		    System.out.println("ByteBase:"+Pipe.bytesReadBase(apiIn)+" for "+ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]+"   "+ Pipe.bytesWorkingTailPosition(apiIn)+"   "+ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]);
     		   
     			log.error("now reading message {}",ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]);
     			
@@ -607,6 +607,7 @@ public class ConnectionStage extends PronghornStage {
 	//0xC0  type/reserved
 	//0x00 remaining length 0
 
+	int ackCount = 0;
 	
 	//TODO: must add a check because we may not get all the needed bytes and need to continue late when the rest of the bytes  are ready.
 	
@@ -657,6 +658,8 @@ public class ConnectionStage extends PronghornStage {
 				//        0x02 remaining length
 				//        MSB PacketID high
 				//        LSB PacketID low
+			    
+			    System.err.println("ZZZZZZZZZZZZZZZZZZZZZZ PUBREC from con");
 				
                 boolean ok = PipeWriter.tryWriteFragment(apiOut, ConOutConst.MSG_CON_OUT_PUB_REC);
                 assert(ok) : "Internal error, expected there to be room for this write";
@@ -665,21 +668,13 @@ public class ConnectionStage extends PronghornStage {
                 outstandingUnconfirmedMessages -= PacketIdReleaseManager.releaseMessage(packetIdRelease, this, packetId,2);
                 
                 outstandingUnconfirmedMessages += 3;
-                
-//                //TODO: AAAAAAAAAAAAAAAAAAAAa send PUBREL here???
-//                PING_MESSAGE.flip();
-//                
-//                pendingWriteBuffers[0] = PING_MESSAGE;
-//                
-//                if (!nonBlockingByteBufferWrite(now)) {
-//                    continueReason = 4;
-//                    return;//try again later, can't send ping now.
-//                }
-                
-                
-                
+            
 			} else {
 			    log.debug("parse PUBACK");
+			    
+			    //TODO: must look at the open socket logic for pushing every message.
+			    
+	//		    System.err.println("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXxx       ack count "+(++ackCount));
 			    
 			    boolean ok = PipeWriter.tryWriteFragment(apiOut, ConOutConst.MSG_CON_OUT_PUB_ACK);
 			    if (!ok) {
@@ -736,6 +731,11 @@ public class ConnectionStage extends PronghornStage {
 					//0x02  remaining length
 					// MSB PacketID high
 					// LSB PacketID low
+				    
+				   
+//TODO: Never got pubComp after sending the PubRel
+				    
+				    System.out.println("ZZZZZ got pub comp ");
 					
 					if ((2!=length) || (0x70 != packetType)) {
 					    dropConnection("Packet assumed to be PUBCOMP but it was malformed.");
@@ -837,6 +837,11 @@ public class ConnectionStage extends PronghornStage {
     private void buildNewConnection() {
         try {
             channel = (SocketChannel) SelectorProvider.provider().openSocketChannel().configureBlocking(false);
+            
+            channel.setOption(StandardSocketOptions.TCP_NODELAY, true);
+            channel.setOption(StandardSocketOptions.SO_LINGER, 3);
+                        
+            
             assert(!channel.isBlocking()) : "Blocking must be turned off for all socket connections";   
         } catch (IOException e) {
             throw new RuntimeException("CHECK NETWORK CONNECTION, New non blocking SocketChannel not supported on this platform",e);

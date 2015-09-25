@@ -36,23 +36,24 @@ public class IntegrationTest {
 	
 	private final static String qos0TestTopic = "root/qos0test/box/color";	
 	private final static int qos0ConnectionIterations = 3;
-	private final static int qos0Messages = 25;  ///TODO: if this is a SMALL number and we connect/disconnect quickly the ring becomes broken.
+	private final static int qos0Messages = 25;
 	private final static int qos0TestPayloadLength = 32;
 	
     private final static String qos1TestTopic = "root/qos1test/box/color";  
-	private final static int qos1ConnectionIterations = 1;
+	private final static int qos1ConnectionIterations = 1; //TODO: replay on disconnect is broken, must fix
 	private final static int qos1Messages = 15;
 	private final static int qos1TestPayloadLength = 32;
 	
     private final static String qos2TestTopic = "root/qos2test/box/color";  
-    private final static int qos2ConnectionIterations = 2;
-    private final static int qos2Messages = 7;
+    private final static int qos2ConnectionIterations = 1;
+    private final static int qos2Messages = 21;
     private final static int qos2TestPayloadLength = 32;
 	
 	private static int qos0TestTotalCount = 0;
 	private static int qos1TestTotalCount = 0;
 	private static int qos1TestTotalAckCount = 0;
 	private static int qos2TestTotalCount = 0;
+	private static int qos2TestTotalAckCount = 0;
     
 	@BeforeClass
 	public static void setup() {
@@ -77,7 +78,6 @@ public class IntegrationTest {
 		        fail(e.getMessage());
 		    }
 		}
-		
 		server.stopServer();
 		server = null;
 	}
@@ -85,9 +85,13 @@ public class IntegrationTest {
 	
     public class IntegrationTestQOS2Publish extends APIStage {
         
-        private int toSend;
-        private final int iterations;
-        private int connectionsCounted;
+        private int iterationCount;
+        private int messageCount;
+        private byte connectState;//-1 need contect, 0 do nothing, 1 need disconnect
+        private final byte NEED_CONNECT = -1;
+        private final byte NEED_NOTHING = 0;
+        private final byte NEED_DISCONNECT = 1;
+                             
         
         private final String topic = qos2TestTopic;
         
@@ -101,14 +105,19 @@ public class IntegrationTest {
         
         private final int payloadPos = 0 + topicLen;            
         private final int payloadLen = qos1TestPayloadLength;
+        private final byte[] empty = new byte[0];
+        private final Pipe connectionIn;
         
         private final int messages;
         
         public IntegrationTestQOS2Publish(GraphManager gm, Pipe unusedIds, Pipe connectionOut, Pipe connectionIn, int iterations, int messages) {
             super(gm,unusedIds,connectionOut,connectionIn,60);
-            this.toSend = iterations;
-            this.iterations =iterations;
+            this.iterationCount = iterations;
+            this.messageCount = messages;
+            this.connectState = NEED_CONNECT;
             this.messages = messages;
+            
+            this.connectionIn = connectionIn;
             
             int i = payloadLen;
             while (--i>=0) {
@@ -119,52 +128,85 @@ public class IntegrationTest {
 
         @Override
         public void businessLogic() {
+            CharSequence url = "127.0.0.1";
+            int conFlags = 0;//MQTTEncoder.CONNECT_FLAG_CLEAN_SESSION_1; //do not clean session                              
+            byte[] willTopic = empty;
+            byte[] willMessageBytes = empty;
+            byte[] username = empty;
+            byte[] passwordBytes = empty;
+            final int qualityOfService = 2;                      
+            int retain = 0;
             
-            if (--toSend>=0) {
-               
-                CharSequence url = "127.0.0.1";
-                int conFlags = 0;//MQTTEncoder.CONNECT_FLAG_CLEAN_SESSION_1; //do not clean session
+            //NOTE: this is not a spinning while any write that is not successful will return and try again later.
+            //      but as long as every write succeeds we will stay here.
+            while (iterationCount>=0) {
                 
-                byte[] empty = new byte[0];
-                
-                byte[] willTopic = empty;
-                byte[] willMessageBytes = empty;
-                byte[] username = empty;
-                byte[] passwordBytes = empty;
-                
-                while (!requestConnect(url, conFlags, willTopic,0,0,0, willMessageBytes,0,0,0, username, passwordBytes)) {                  
-                }
-                        
-                final int qualityOfService = 2;
-                                
-                int retain = 0;
-                            
-                int count = messages;
-                while (--count>=0) { 
-                    System.out.println(toSend+"  "+count);
-                    long pos;
-                    while (-1==(pos = requestPublish(values, topicPos, topicLen, valuesMask, qualityOfService, retain, values, payloadPos, payloadLen, valuesMask))) {
+                if (NEED_DISCONNECT == connectState) {
+                    if (requestDisconnect()) {
+                        connectState = NEED_CONNECT;
+                    } else {
+                        return;//try again later
                     }
                 }
-                
-                while (!requestDisconnect()) {                  
+                 
+                if (NEED_CONNECT == connectState) {
+                    if (requestConnect(url, conFlags, willTopic,0,0,0, willMessageBytes,0,0,0, username, passwordBytes)) {                  
+                        connectState = NEED_NOTHING;
+                        messageCount = messages;
+                    } else {
+                        return;//try again later
+                    }
                 }
+                 
+                if (messageCount>0) {
+                    if (-1!=(requestPublish(values, topicPos, topicLen, valuesMask, qualityOfService, retain, values, payloadPos, payloadLen, valuesMask))) {
+                        if (--messageCount<=0) {
+                            if (1==iterationCount) {
+                                //On the last trip we must stay connected so that all the Acks will be recieved
+                                connectState = NEED_NOTHING; //now done waiting for all the acks.
+                                return;
+                            }
+                            if (requestDisconnect()) {                  
+                                connectState = NEED_CONNECT;
+                            } else {
+                                connectState = NEED_DISCONNECT;
+                                return;//try again later
+                            }
                             
-            } else {                
-               requestShutdown();      
-               log.trace("shutdown of test was requested.");
-
-            }
-            
+                        }
+                    } else {
+                        return;//try again later
+                    }
+                } else {
+                    iterationCount--;                      
+                }
+             } 
         }
+        
+        @Override
+        protected void ackReceived2(int packetId) {
+            
+            assertEquals(0, Pipe.getPublishBatchSize(connectionIn));
+            
+            if (++qos2TestTotalAckCount==qos2Messages*qos2ConnectionIterations) {
+                requestDisconnect();
+                //only shutdown after we get the right count of acks 
+                requestShutdown();               
+            }
+        }
+        
+        
     }
 
 	   public class IntegrationTestQOS1Publish extends APIStage {
            
-           private int toSend;
-           private final int iterations;
-           private int connectionsCounted;
-           
+           private int iterationCount;
+           private int messageCount;
+           private byte connectState;//-1 need contect, 0 do nothing, 1 need disconnect
+           private final byte NEED_CONNECT = -1;
+           private final byte NEED_NOTHING = 0;
+           private final byte NEED_DISCONNECT = 1;
+                                
            private final String topic = qos1TestTopic;
            
            private final int valuesBits = 8;
@@ -179,12 +221,19 @@ public class IntegrationTest {
            private final int payloadLen = qos1TestPayloadLength;
            
            private final int messages;
+           private final byte[] empty = new byte[0];
+           
+           private final Pipe connectionIn;
            
            public IntegrationTestQOS1Publish(GraphManager gm, Pipe unusedIds, Pipe connectionOut, Pipe connectionIn, int iterations, int messages) {
                super(gm,unusedIds,connectionOut,connectionIn,60);
-               this.toSend = iterations;
-               this.iterations =iterations;
+               
+               this.iterationCount = iterations;
+               this.messageCount = messages;
+               this.connectState = NEED_CONNECT;
+               
                this.messages = messages;
+               this.connectionIn = connectionIn;
                
                int i = payloadLen;
                while (--i>=0) {
@@ -195,52 +244,70 @@ public class IntegrationTest {
 
            @Override
            public void businessLogic() {
+               CharSequence url = "127.0.0.1";
+               int conFlags = 0;//MQTTEncoder.CONNECT_FLAG_CLEAN_SESSION_1; //do not clean session                              
+               byte[] willTopic = empty;
+               byte[] willMessageBytes = empty;
+               byte[] username = empty;
+               byte[] passwordBytes = empty;
+               final int qualityOfService = 1;                      
+               int retain = 0;
                
-               //TODO: we must clear out all the acks for these or we will just hang.
-               
-               if (--toSend>=0) {
-                  
-                   CharSequence url = "127.0.0.1";
-                   int conFlags = 0;//MQTTEncoder.CONNECT_FLAG_CLEAN_SESSION_1; //do not clean session
+               //NOTE: this is not a spinning while any write that is not successful will return and try again later.
+               //      but as long as every write succeeds we will stay here.
+               while (iterationCount>=0) {
                    
-                   byte[] empty = new byte[0];
+                  if (NEED_DISCONNECT == connectState) {
+                      if (requestDisconnect()) {
+                          connectState = NEED_CONNECT;
+                      } else {
+                          return;//try again later
+                      }
+                  }
                    
-                   byte[] willTopic = empty;
-                   byte[] willMessageBytes = empty;
-                   byte[] username = empty;
-                   byte[] passwordBytes = empty;
+                  if (NEED_CONNECT == connectState) {
+                      if (requestConnect(url, conFlags, willTopic,0,0,0, willMessageBytes,0,0,0, username, passwordBytes)) {                  
+                          connectState = NEED_NOTHING;
+                          messageCount = messages;
+                      } else {
+                          return;//try again later
+                      }
+                  }
                    
-                   while (!requestConnect(url, conFlags, willTopic,0,0,0, willMessageBytes,0,0,0, username, passwordBytes)) {                  
-                   }
-                           
-                   final int qualityOfService = 1;
-                                   
-                   int retain = 0;
-                               
-                   int count = messages;
-                   while (--count>=0) { 
-                       long pos;
-                       while (-1==(pos = requestPublish(values, topicPos, topicLen, valuesMask, qualityOfService, retain, values, payloadPos, payloadLen, valuesMask))) {
-                       }
-                   }
-                   
-                   while (!requestDisconnect()) {                  
-                   }
-                  log.trace("all the messages sent");        
-               }             
-                
+                  if (messageCount>0) {
+                      if (-1!=(requestPublish(values, topicPos, topicLen, valuesMask, qualityOfService, retain, values, payloadPos, payloadLen, valuesMask))) {
+                          if (--messageCount<=0) {
+                              if (1==iterationCount) {
+                                  //On the last trip we must stay connected so that all the Acks will be recieved
+                                  connectState = NEED_NOTHING; //now done waiting for all the acks.
+                                  return;
+                              }
+                              if (requestDisconnect()) {                  
+                                  connectState = NEED_CONNECT;
+                              } else {
+                                  connectState = NEED_DISCONNECT;
+                                  return;//try again later
+                              }
+                              
+                          }
+                      } else {
+                          return;//try again later
+                      }
+                  } else {
+                      iterationCount--;                      
+                  }
+               } 
            }
            
            protected void ackReceived1(int packetId) {
                
+               assertEquals(0, Pipe.getPublishBatchSize(connectionIn));
+               
                if (++qos1TestTotalAckCount==qos1Messages*qos1ConnectionIterations) {
+                   requestDisconnect();
                    //only shutdown after we get the right count of acks 
                    requestShutdown();               
                }
-               
-               
-               
-               
            }
            
        }
@@ -296,6 +363,11 @@ public class IntegrationTest {
 				byte[] username = empty;
 				byte[] passwordBytes = empty;
 				
+				/////////////////DO NOT COPY THIS APPROACH, DO NOT USE WHILE LOOPS LIKE THIS/////////////
+				//NOTE: we can only use this lazy approach because there are no Acks back from the server.
+				//      if we got messages back they would back up the incoming pipe.  When it gets backed up
+				//      then our outgoing pipe will get backed up and we will hang right here in one of these while loops.
+				/////////////////////////////////////////////////////////////////////////////////////////
 				
 				while (!requestConnect(url, conFlags, willTopic,0,0,0, willMessageBytes,0,0,0, username, passwordBytes)) {					
 				}
@@ -406,7 +478,7 @@ public class IntegrationTest {
 			@Override
 			public void messageArrived(String topic, MqttMessage message) throws Exception {
 			    
-			//    System.out.println("subscriber recieved message on topic "+topic+" for QOS "+message.getQos());
+			    System.out.println("***************  subscriber recieved message on topic "+topic+" for QOS "+message.getQos());
 			    
 				if (0==message.getQos() && topic.equals(qos0TestTopic)) {
 				    if (++qos0TestTotalCount>(qos0ConnectionIterations*qos0Messages) ) {
@@ -461,7 +533,7 @@ public class IntegrationTest {
 			}};
 			
 		client.setCallback(callback);
-		
+
 		client.connect();
 		client.subscribe("#", 2);
 	}
@@ -519,7 +591,7 @@ public class IntegrationTest {
         assertEquals(qos0Messages*qos0ConnectionIterations, qos0TestTotalCount);
 	}
 	    
-    @Ignore      
+    @Test     
     public void testQoS1() {
         //for this test we will use a known working broker and known working subscriber (both from eclipse)
         //we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.
@@ -538,26 +610,21 @@ public class IntegrationTest {
         
         StageScheduler scheduler = new ThreadPerStageScheduler(gm);
         scheduler.startup();
+
+        scheduler.awaitTermination(4, TimeUnit.SECONDS);
         
-        //TODO: without this it ends at the first point when all the queues are empty but at that point we are not done yet!!!
-        try {
-            Thread.sleep(4000);
-        } catch (InterruptedException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
-        }
-        
-        scheduler.awaitTermination(7, TimeUnit.SECONDS);       
-        
-        assertEquals(qos1Messages*qos1ConnectionIterations, qos1TestTotalCount);
-        System.out.println("ack count:"+qos1TestTotalAckCount);
+        assertEquals("Sent",qos1Messages*qos1ConnectionIterations, qos1TestTotalCount);
+        assertEquals("Acked",qos1Messages*qos1ConnectionIterations, qos1TestTotalAckCount);
     }
     
     
-    @Ignore       
+    @Test       
     public void testQoS2() {
         //for this test we will use a known working broker and known working subscriber (both from eclipse)
         //we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.
+        
+        qos2TestTotalCount = 0;
+        qos2TestTotalAckCount = 0;
         
         GraphManager gm = new GraphManager();
         APIStageFactory factory = new APIStageFactory() {
@@ -572,7 +639,8 @@ public class IntegrationTest {
         scheduler.startup();
         scheduler.awaitTermination(3, TimeUnit.SECONDS);     
         
-        assertEquals(qos2Messages*qos2ConnectionIterations, qos2TestTotalCount);
+        assertEquals("Acked",qos2Messages*qos2ConnectionIterations, qos2TestTotalAckCount);
+        assertEquals("Sent",qos2Messages*qos2ConnectionIterations, qos2TestTotalCount);
         
     }
 	

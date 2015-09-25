@@ -18,7 +18,6 @@ public class ClockApp {
     
     static String destinationIp;
     static String qos;
-    static String rate;
     
     ClockStage stage;
     
@@ -26,7 +25,7 @@ public class ClockApp {
         System.out.println("Clock App"); //TODO: report who we are talking to.
         destinationIp = getOptArg("-destination","-d", args, "127.0.0.1");
         qos =           getOptArg("-qos","-q", args, "0");
-        rate =          getOptArg("-nsRate","-ns", args, "1000000000"); //in ns, once a second    
+        String rate =          getOptArg("-nsRate","-ns", args, "1000000000"); //in ns, once a second  
         
         int ttlSec = 20;
         int inFlightLimit = 10;

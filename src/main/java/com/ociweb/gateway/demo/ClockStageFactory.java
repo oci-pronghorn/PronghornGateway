@@ -23,7 +23,7 @@ public class ClockStageFactory extends APIStageFactory {
 	
 	@Override
 	public APIStage newInstance(GraphManager gm, Pipe unusedIds, Pipe connectionOut, Pipe connectionIn) {
-		return new ClockStage(gm,unusedIds,connectionOut,connectionIn, ttlSec);
+		return new ClockStage(gm,unusedIds,connectionOut,connectionIn, ttlSec, rate);
 	}
 	
 	public String getRate() {

@@ -28,6 +28,7 @@ public class APIStage extends PronghornStage {
   	 */
 	
 	private final int sizeOfPacketIdFragment;
+	private final int sizeOfPubRel;
 	private static final int theOneMsg = 0;// there is only 1 message supported by this stage
 	
 	
@@ -41,6 +42,7 @@ public class APIStage extends PronghornStage {
 		this.ttlSec = ttlSec;
 			  	
         this.sizeOfPacketIdFragment = Pipe.from(idGenIn).fragDataSize[theOneMsg];
+        this.sizeOfPubRel = Pipe.from(toCon).fragDataSize[ConInConst.MSG_CON_IN_PUB_REL];
         
         //add one more ring buffer so apps can write directly to it since this stage needs to copy from something.
         //this makes testing much easier, it makes integration tighter
@@ -56,7 +58,8 @@ public class APIStage extends PronghornStage {
 	@Override
 	public void run() {
 		 
-		while (PipeReader.tryReadFragment(fromCon)) {	
+	   
+		while ( PipeWriter.hasRoomForFragmentOfSize(toCon, sizeOfPubRel) && PipeReader.tryReadFragment(fromCon)) {	
 			int msgIdx = PipeReader.getMsgIdx(fromCon);
 			
 			System.out.println("got message: "+msgIdx);
@@ -87,11 +90,15 @@ public class APIStage extends PronghornStage {
 				    
 				break;    
 				case ConOutConst.MSG_CON_OUT_PUB_REC:
+				    System.out.println("ZZZZZZZZZZZZZZZZZZZZZZZZZZZzz  Got PubRec fromserver ");
+				    
 				    packetId = PipeReader.readInt(fromCon, ConOutConst.CON_OUT_PUB_REC_FIELD_PACKETID);
+				    System.out.println("for packet:"+packetId);
 				    
 				    ackReceived2(packetId);
 				    
-				    while (!PipeWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_PUB_REL)) {	//TODO: rewrite as non-blocking. do not read unless we have this output room!			        
+				    if (!PipeWriter.tryWriteFragment(toCon, ConInConst.MSG_CON_IN_PUB_REL)) {
+				       throw new UnsupportedOperationException("Expected room in pipe due to the hasRoomForFragmentOfSize check."); 
 				    }
 				    
 				    PipeWriter.writeInt(toCon,  ConInConst.CON_IN_PUB_REL_FIELD_PACKETID, packetId);
@@ -108,6 +115,7 @@ public class APIStage extends PronghornStage {
 				    
 				break;
 				default:
+				    throw new UnsupportedOperationException("Unknown Mesage: "+msgIdx);
 					
 			}
 			PipeReader.releaseReadLock(fromCon);

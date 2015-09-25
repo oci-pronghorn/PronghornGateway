@@ -25,11 +25,12 @@ public class ClockStage extends APIStage {
     private int payloadLength;
     
     boolean connected;
+    private final long rate;
     
-    public ClockStage(GraphManager graphManager, Pipe idGenIn, Pipe fromC, Pipe toC, int ttlSec) {
+    public ClockStage(GraphManager graphManager, Pipe idGenIn, Pipe fromC, Pipe toC, int ttlSec, String rate) {
 		super(graphManager, idGenIn, fromC, toC, ttlSec);
-		
-		GraphManager.addAnnotation(graphManager, GraphManager.SCHEDULE_RATE, ClockApp.rate, this);
+		this.rate = Long.parseLong(rate);
+		GraphManager.addAnnotation(graphManager, GraphManager.SCHEDULE_RATE, rate, this);
 				
 	}
 
@@ -83,7 +84,7 @@ public class ClockStage extends APIStage {
         
         payloadIdx = runningPos;
         payloadLength = 1+8+8;        
-        long rate = Long.parseLong(ClockApp.rate);
+        
         int tmp = runningPos+9;//skip over the dynamic fields and add this constant
         workspace[WORK_MASK&tmp++] = (byte) (rate >> 56);
         workspace[WORK_MASK&tmp++] = (byte) (rate >> 48);
