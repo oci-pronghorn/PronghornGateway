@@ -69,7 +69,7 @@ public class PacketIdReleaseManager {
                 }	            	            
                 PipeReader.releaseReadLock(connectionStage.apiIn);
                 if (!foundMustNotReleasePoint) {
-                    System.out.println("B Released up to  "+Pipe.getWorkingTailPosition(connectionStage.apiIn)+"  "+connectionStage.apiIn+"  "+connectionStage.apiIn.sizeOfStructuredLayoutRingBuffer+" "+connectionStage.apiIn.sizeOfUntructuredLayoutRingBuffer);
+                    System.out.println("B Released up to  "+Pipe.getWorkingTailPosition(connectionStage.apiIn)+"  "+connectionStage.apiIn+"  "+connectionStage.apiIn.sizeOfSlabRing+" "+connectionStage.apiIn.sizeOfBlobRing);
                     Pipe.releaseBatchedReadReleasesUpToThisPosition(connectionStage.apiIn);
                 }
             }

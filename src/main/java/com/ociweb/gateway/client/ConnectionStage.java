@@ -170,10 +170,10 @@ public class ConnectionStage extends PronghornStage {
 		
 		
 		//Connect message can be no bigger than the incoming pipe that holds it however, we could possibly make this a little smaller.
-		CONNECT_MESSAGE = ByteBuffer.allocate(apiIn.sizeOfUntructuredLayoutRingBuffer);
+		CONNECT_MESSAGE = ByteBuffer.allocate(apiIn.sizeOfBlobRing);
 		
 		//input data can not be any bigger than the output pipe where messages will be sent back to the the caller, we could make this smaller
-		inputSocketBuffer = ByteBuffer.allocate(apiOut.sizeOfUntructuredLayoutRingBuffer);
+		inputSocketBuffer = ByteBuffer.allocate(apiOut.sizeOfBlobRing);
 		
 				
 	     AFTER_WRITE_DO_NOTHING = new ActivityAfterWrite();
