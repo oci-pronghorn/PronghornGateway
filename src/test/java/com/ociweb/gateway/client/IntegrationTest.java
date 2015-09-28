@@ -618,7 +618,7 @@ public class IntegrationTest {
     }
     
     
-    @Test       
+    @Ignore   
     public void testQoS2() {
         //for this test we will use a known working broker and known working subscriber (both from eclipse)
         //we will connect, publish and disconnect with the pronghorn code and confirm the expected values in the subscriber.
