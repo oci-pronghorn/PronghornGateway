@@ -130,7 +130,7 @@ public class ConnectionStage extends PronghornStage {
 		Pipe.batchAllReleases(apiIn);
 		Pipe.setPublishBatchSize(apiOut, 0); //Do not store up acks send them immediately
 		
-		GraphManager.addAnnotation(graphManager, GraphManager.SCHEDULE_RATE, rate, this);
+		GraphManager.addNota(graphManager, GraphManager.SCHEDULE_RATE, rate, this);
 		
 	}
 	

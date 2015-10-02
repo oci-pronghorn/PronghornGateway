@@ -49,7 +49,7 @@ public class APIStage extends PronghornStage {
         //it may add a copy?
         
         //must be set so this stage will get shut down and ignore the fact that is has un-consumed messages coming in 
-        GraphManager.addAnnotation(graphManager,GraphManager.PRODUCER, GraphManager.PRODUCER, this);
+        GraphManager.addNota(graphManager,GraphManager.PRODUCER, GraphManager.PRODUCER, this);
         
 	}
 	

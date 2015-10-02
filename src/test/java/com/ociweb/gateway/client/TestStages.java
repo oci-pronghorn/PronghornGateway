@@ -71,7 +71,7 @@ public class TestStages {
 			PronghornStage stage = GraphManager.getStage(gm, stageId);
 			if (null!=stage) {
 				//filter out any stages dedicated to monitoring
-				if (null ==	GraphManager.getAnnotation(gm, stage, GraphManager.MONITOR, null)) {
+				if (null ==	GraphManager.getNota(gm, stage, GraphManager.MONITOR, null)) {
 
 					int inputs = GraphManager.getInputPipeCount(gm, stage);
 					//need array of RingBufferConfig objects.
@@ -111,7 +111,7 @@ public class TestStages {
 			PronghornStage stage = GraphManager.getStage(gm, stageId);
 			if (null!=stage) {
 				//filter out any stages dedicated to monitoring
-				if (null ==	GraphManager.getAnnotation(gm, stage, GraphManager.MONITOR, null)) {
+				if (null ==	GraphManager.getNota(gm, stage, GraphManager.MONITOR, null)) {
 
 					int inputs = GraphManager.getInputPipeCount(gm, stage);
 					//need array of RingBufferConfig objects.
@@ -187,7 +187,7 @@ public class TestStages {
 		
 		int i = inputRings.length;
 		while (--i>=0) {
-			GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, new FuzzGeneratorStage(gm, random, testDuration, inputRings[i]));
+			GraphManager.addNota(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, new FuzzGeneratorStage(gm, random, testDuration, inputRings[i]));
 		}
 		
 		//TODO: test must check for hang, needs special scheduler that tracks time and reports longest active actor
@@ -205,7 +205,7 @@ public class TestStages {
 		Constructor constructor = targetStage.getConstructor(gm.getClass(), inputRings.getClass(), outputRings.getClass());
 				
 		//all target test stages are market as producer for the duration of this test run
-		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, (PronghornStage)constructor.newInstance(gm, inputRings, outputRings));	
+		GraphManager.addNota(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, (PronghornStage)constructor.newInstance(gm, inputRings, outputRings));	
 		
 		if (log.isDebugEnabled()) {
 			MonitorConsoleStage.attach(gm);
@@ -266,13 +266,13 @@ public class TestStages {
 		Constructor constructor = targetStage.getConstructor(gm.getClass(), validateToTested.getClass(), testedToValidate.getClass());
 
 		//all target test stages are market as producer for the duration of this test run
-		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, (PronghornStage)constructor.newInstance(gm, validateToTested, testedToValidate));
+		GraphManager.addNota(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, (PronghornStage)constructor.newInstance(gm, validateToTested, testedToValidate));
 								
 		//validation shuts down when the producers on both end have already shut down.
 		ExpectedUseValidationStage valdiationStage = new ExpectedUseValidationStage(gm, validationInputs, validationOutputs, validator);
 	
 		//generator is always a producer and must be marked as such.			
-		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER,
+		GraphManager.addNota(gm, GraphManager.PRODUCER, GraphManager.PRODUCER,
 				                  new ExpectedUseGeneratorStage(gm, generatorInputs, generatorOutputs, random, generator));
 		
 		if (log.isDebugEnabled()) {

@@ -44,10 +44,10 @@ public class IdGenStage extends PronghornStage {
 		assert(Pipe.from(input).equals(Pipe.from(output))) : "Both must have same message types ";	
 		this.sizeOfFragment = Pipe.from(input).fragDataSize[theOneMsg];
 		
-		GraphManager.addAnnotation(graphManager, GraphManager.SCHEDULE_RATE, rate, this);
+		GraphManager.addNota(graphManager, GraphManager.SCHEDULE_RATE, rate, this);
 		
 		//must be set so this stage will get shut down and ignore the fact that is has un-consumed messages coming in 
-        GraphManager.addAnnotation(graphManager,GraphManager.PRODUCER, GraphManager.PRODUCER, this);
+        GraphManager.addNota(graphManager,GraphManager.PRODUCER, GraphManager.PRODUCER, this);
 	}
 	
 	public IdGenStage(GraphManager graphManager, Pipe[] inputs, Pipe[] outputs) {

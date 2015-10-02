@@ -20,14 +20,14 @@ public class ValidGraphConstruction {
 		GraphManager gm = new GraphManager();		
 		ClientAPIFactory.clientAPI(new ClockStageFactory("1000",true,20,60), gm);
 		
-		assertEquals("API and IdGen should be the only producers",2, gm.countStagesWithAnnotationKey(gm, GraphManager.PRODUCER));
+		assertEquals("API and IdGen should be the only producers",2, gm.countStagesWithNotaKey(gm, GraphManager.PRODUCER));
 		
 		//we do not know which id will be given to which stage so walk them all and do the right test for each
 		int stageId = PronghornStage.totalStages();
 		while (--stageId>=0) {			
 			PronghornStage stage = GraphManager.getStage(gm, stageId);
 			//filter out any stages dedicated to monitoring
-			if (null ==	GraphManager.getAnnotation(gm, stage, GraphManager.MONITOR, null)) {
+			if (null ==	GraphManager.getNota(gm, stage, GraphManager.MONITOR, null)) {
 				if (stage instanceof ConnectionStage) {
 					
 					assertEquals("from API to Connection ",ClockStage.class, GraphManager.getRingProducer(gm, GraphManager.getInputPipe(gm, stage, 1).ringId).getClass());

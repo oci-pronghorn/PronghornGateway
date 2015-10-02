@@ -30,7 +30,7 @@ public class ClockStage extends APIStage {
     public ClockStage(GraphManager graphManager, Pipe idGenIn, Pipe fromC, Pipe toC, int ttlSec, String rate) {
 		super(graphManager, idGenIn, fromC, toC, ttlSec);
 		this.rate = Long.parseLong(rate);
-		GraphManager.addAnnotation(graphManager, GraphManager.SCHEDULE_RATE, rate, this);
+		GraphManager.addNota(graphManager, GraphManager.SCHEDULE_RATE, rate, this);
 				
 	}
 

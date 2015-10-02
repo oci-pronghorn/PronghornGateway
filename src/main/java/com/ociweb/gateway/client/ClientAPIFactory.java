@@ -32,9 +32,9 @@ public class ClientAPIFactory {
 				
 
 		//these instances are all held by the graph which is passed in	
-		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, new IdGenStage(gm, releasedIds, unusedIds, rate));
+		GraphManager.addNota(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, new IdGenStage(gm, releasedIds, unusedIds, rate));
 		APIStage apiStage = factory.newInstance(gm, unusedIds, connectionOut, connectionIn);
-		GraphManager.addAnnotation(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, apiStage);
+		GraphManager.addNota(gm, GraphManager.PRODUCER, GraphManager.PRODUCER, apiStage);
 		new ConnectionStage(gm, connectionIn, connectionOut, releasedIds, rate.length()>2 ? rate.substring(0, rate.length()-2) : "0", 
 		                    factory.getInFlightLimit(), factory.getTTLSec(), factory.isSecured(), factory.getPort());
 		

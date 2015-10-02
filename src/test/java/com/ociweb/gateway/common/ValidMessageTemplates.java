@@ -3,7 +3,7 @@ package com.ociweb.gateway.common;
 import org.junit.Test;
 
 import com.ociweb.pronghorn.pipe.FieldReferenceOffsetManager;
-import com.ociweb.pronghorn.stage.monitor.MonitorFROM;
+import com.ociweb.pronghorn.pipe.util.build.FROMValidation;
 
 public class ValidMessageTemplates {
 
@@ -14,7 +14,7 @@ public class ValidMessageTemplates {
 		String varName = "idRangesFROM";				
 		FieldReferenceOffsetManager encodedFrom = CommonFromFactory.idRangesFROM;
 		
-		TestUtil.testForMatchingFROMs(templateFile, varName, encodedFrom);
+		FROMValidation.testForMatchingFROMs(templateFile, varName, encodedFrom);
 				
 	}
 	
@@ -24,7 +24,7 @@ public class ValidMessageTemplates {
 		String varName = "monitorFROM";				
 		FieldReferenceOffsetManager encodedFrom = CommonFromFactory.monitorFROM;
 		
-		TestUtil.testForMatchingFROMs(templateFile, varName, encodedFrom);
+		FROMValidation.testForMatchingFROMs(templateFile, varName, encodedFrom);
 					
 	}
 	
