@@ -374,7 +374,7 @@ public class ConnectionStage extends PronghornStage {
     		    int msgIdx = PipeReader.getMsgIdx(apiIn);
     		    
     		  //  System.err.println(apiIn.sizeOfUntructuredLayoutRingBuffer+"  "+apiIn+"  "+(Pipe.bytesWorkingHeadPosition(apiIn)-Pipe.bytesTailPosition(apiIn)));
-    		    System.out.println("ByteBase:"+Pipe.bytesReadBase(apiIn)+" for "+ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]+"   "+ Pipe.bytesWorkingTailPosition(apiIn)+"   "+ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]);
+    		    System.out.println("ByteBase:"+Pipe.bytesReadBase(apiIn)+" for "+ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]+"   "+ Pipe.getWorkingBlobRingTailPosition(apiIn)+"   "+ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]);
     		   
     			log.error("now reading message {}",ClientFromFactory.connectionInFROM.fieldNameScript[msgIdx]);
     			

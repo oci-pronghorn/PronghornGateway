@@ -70,7 +70,7 @@ public class IdGenStage extends PronghornStage {
 		int i = inputs.length;
 		while (--i>=0) {
 			Pipe inputRing = inputs[i];
-			while (contentToLowLevelRead(inputRing, sizeOfFragment) && 
+			while (hasContentToRead(inputRing, sizeOfFragment) && 
 				   totalRanges<MAX_CONSUMED_BLOCKS_LIMIT) // only release blocks if we have room, just in case one splits, back-pressure 
 			{
 				int msgIdx = Pipe.takeMsgIdx(inputRing);

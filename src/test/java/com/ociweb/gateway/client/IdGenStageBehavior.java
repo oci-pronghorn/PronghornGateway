@@ -110,7 +110,7 @@ public class IdGenStageBehavior{
 				int i = inputs.length;
 				while (--i>=0) {
 					Pipe inputRing = inputs[i];
-					while (contentToLowLevelRead(inputRing, sizeOfFragment) && ((tail+65534)-head)>IdGenStage.MAX_BLOCK_SIZE ) {
+					while (Pipe.hasContentToRead( inputRing, sizeOfFragment) && ((tail+65534)-head)>IdGenStage.MAX_BLOCK_SIZE ) {
 						int msgIdx = Pipe.takeMsgIdx(inputRing);
 						assert(theOneMessage == msgIdx);
 						
@@ -169,7 +169,7 @@ public class IdGenStageBehavior{
 						final byte expected = j;
 						final byte toggle = (byte) ((expected + 1) & 1);
 						
-						boolean contentToLowLevelRead = contentToLowLevelRead(inputs[expected], sizeOfFragment);
+						boolean contentToLowLevelRead = Pipe.hasContentToRead(inputs[expected], sizeOfFragment);
 						boolean roomToLowLevelWrite = roomToLowLevelWrite(outputs[toggle], sizeOfFragment);
 											
 						if (contentToLowLevelRead && roomToLowLevelWrite) {

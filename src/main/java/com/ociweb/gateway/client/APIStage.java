@@ -204,7 +204,7 @@ public class APIStage extends PronghornStage {
 				
 		if (nextFreePacketId >= nextFreePacketIdLimit) {
 			//get next range
-			if (Pipe.contentToLowLevelRead(idGenIn, sizeOfPacketIdFragment)) {				
+			if (Pipe.hasContentToRead(idGenIn, sizeOfPacketIdFragment)) {				
 				loadNextPacketIdRange();				
 			} else {
 				return -1;
