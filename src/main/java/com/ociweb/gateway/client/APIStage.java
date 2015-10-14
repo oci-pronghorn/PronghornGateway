@@ -105,7 +105,7 @@ public class APIStage extends PronghornStage {
 				   
 		            final int bytePos = Pipe.bytesWorkingHeadPosition(toCon);
 		            byte[] byteBuffer = Pipe.byteBuffer(toCon);
-		            int byteMask = Pipe.byteMask(toCon);
+		            int byteMask = Pipe.blobMask(toCon);
 		            
 				    int len = MQTTEncoder.buildPubRelPacket(bytePos, byteBuffer, byteMask, packetId);
 	                             
@@ -164,7 +164,7 @@ public class APIStage extends PronghornStage {
 			//this is the high level API however we are writing bytes to to the end of the unstructured buffer.
 			final int bytePos = Pipe.bytesWorkingHeadPosition(toCon);
 			byte[] byteBuffer = Pipe.byteBuffer(toCon);
-			int byteMask = Pipe.byteMask(toCon);
+			int byteMask = Pipe.blobMask(toCon);
 						
 			int len = MQTTEncoder.buildConnectPacket(bytePos, byteBuffer, byteMask, ttlSec, conFlags, 
 					                                 clientId, 0 , clientId.length, 0xFFFF,
@@ -223,7 +223,7 @@ public class APIStage extends PronghornStage {
 						
 			final int bytePos = Pipe.bytesWorkingHeadPosition(toCon);
 			byte[] byteBuffer = Pipe.byteBuffer(toCon);
-			int byteMask = Pipe.byteMask(toCon);
+			int byteMask = Pipe.blobMask(toCon);
 			
 			int len = MQTTEncoder.buildPublishPacket(bytePos, byteBuffer, byteMask, qualityOfService, retain, 
 					                topic, topicIdx, topicLength, topicMask, 
