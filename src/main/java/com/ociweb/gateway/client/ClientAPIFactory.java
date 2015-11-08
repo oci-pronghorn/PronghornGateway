@@ -2,6 +2,7 @@ package com.ociweb.gateway.client;
 
 import com.ociweb.gateway.common.CommonFromFactory;
 import com.ociweb.gateway.common.IdGenStage;
+import com.ociweb.pronghorn.pipe.MessageSchemaDynamic;
 import com.ociweb.pronghorn.pipe.Pipe;
 import com.ociweb.pronghorn.pipe.PipeConfig;
 import com.ociweb.pronghorn.stage.monitor.MonitorConsoleStage;
@@ -21,9 +22,9 @@ public class ClientAPIFactory {
 	private static APIStage buildInstance(APIStageFactory factory, GraphManager gm) {
 		
 	    String rate = factory.getRate();
-	    PipeConfig idGenConfig = new PipeConfig(CommonFromFactory.idRangesFROM, factory.getQueuedIdsMaxCount(), 0);		
-		PipeConfig connectionInConfig = new PipeConfig(ClientFromFactory.connectionInFROM, factory.getQueuedConInMaxCount(), factory.getMaxTopicPlusPayload());
-		PipeConfig connectionOutConfig = new PipeConfig(ClientFromFactory.connectionOutFROM, factory.getQueuedConOutMaxCount(), factory.getMaxTopicPlusPayload());
+	    PipeConfig idGenConfig = new PipeConfig(new MessageSchemaDynamic(CommonFromFactory.idRangesFROM), factory.getQueuedIdsMaxCount(), 0);		
+		PipeConfig connectionInConfig = new PipeConfig(new MessageSchemaDynamic(ClientFromFactory.connectionInFROM), factory.getQueuedConInMaxCount(), factory.getMaxTopicPlusPayload());
+		PipeConfig connectionOutConfig = new PipeConfig(new MessageSchemaDynamic(ClientFromFactory.connectionOutFROM), factory.getQueuedConOutMaxCount(), factory.getMaxTopicPlusPayload());
 						
 		Pipe unusedIds = new Pipe(idGenConfig);
 		Pipe releasedIds = new Pipe(idGenConfig);
@@ -47,7 +48,7 @@ public class ClientAPIFactory {
 		    
 		    //TODO: B, replace with JMX version before release.
 			Long defaultMonitorRate = Long.valueOf(50000000);
-			PipeConfig defaultMonitorRingConfig = new PipeConfig(CommonFromFactory.monitorFROM, 5, 0);
+			PipeConfig defaultMonitorRingConfig = new PipeConfig(new MessageSchemaDynamic(CommonFromFactory.monitorFROM), 5, 0);
 		    MonitorConsoleStage.attach(gm,defaultMonitorRate,defaultMonitorRingConfig); 
 		}
 		return apiStage;
